@@ -1,0 +1,114 @@
+
+*MSYS2 MinGW64 Terminal commands to start*
+VIDEO 1 (Set up MinGW64 and download all needed packages)
+
+pacman -Syu	#updates system
+
+pacman -Su	#updates packages
+
+pacman -S --needed base-devel mingw-w64-x86_64-toolchain	#installs base development system, dependencies and toolchain
+
+#for some reason the ucrt repository above did not include fortran, so you need to also install this after
+
+pacman -S mingw-w64-ucrt-x86_64-gcc-fortran #This is the official installation from fortranwiki.org for msys2
+
+#Note that this installs a folder ucrt64, and the gfortran is in ucrt64/bin not in the previous mingw
+#This step is done in another tutorial, you need to add the bin folder to environment variable path
+
+pacman -S mingw-w64-x86_64-python3-pip mingw-w64-x86_64-python3-setuptools 	#installs pip3 and setup tools
+
+/mingw64/bin/pip3 install fortran-language-server	#install fortls, crucial for VSCode highlighting etc
+
+pacman -S mingw-w64-x86_64-lapack	#the bane of my existence, installs lapack and blas automatically
+
+pacman -S git unzip zsh vim	#installs git? at this point I'm doing EVERYTHING from the tutorial
+
+VIDEO 2 (Very optional video, it's just setting up the themes and the way the MSYS2 command prompt look)
+
+sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"	#installs zsh shell
+
+#To close zsh shell "Ctrl+D" -sends you back to MSYS2 MinGW64 shell
+#To open zsh shell in MSYS2 MinGW64 just type "zsh"
+
+pwd	#shows your home directory where you installed MSYS2
+
+vim -p .zshrc .oh-my-zsh/themes/agnoster.zsh-theme	#now as you type you can just press Tab and the terminal autofills, also this selects the theme
+
+#when he opens the theme file he changes ZSH_THEME="robbyrussel" to ="agnoster" but you might see you can't rename anything, in order to do so press the "+" button and then you can.
+
+#also to save the overwrite if working through the shell write :w and hit Enter
+
+VIDDEO 3 (Setting up VSCode)
+
+#important thing to note here is that since the video came out VSCode has had the shell setup options for the setting.json deprecated
+#if you look from the comments the most recent one shows the right way to do it
+#After you set it up, your settings should look like below, you can just copy and paste what I've written but changing the zsh.exe directory to your correct one
+#Also if you do copy paste make sure the indentations are correct
+
+"terminal.integrated.defaultProfile.windows": "Zsh",
+    "terminal.integrated.profiles.windows": {
+
+        "PowerShell": {
+            "source": "PowerShell",
+            "icon": "terminal-powershell"
+        },
+        "Command Prompt": {
+            "path": [
+                "${env:windir}\\Sysnative\\cmd.exe",
+                "${env:windir}\\System32\\cmd.exe"
+            ],
+            "args": [],
+            "icon": "terminal-cmd"
+        },
+        "Git Bash": {
+            "source": "Git Bash"
+        },
+        "Zsh": {
+            "path":["C:\\Fortran\\MSYS2\\usr\\bin\\zsh.exe"],
+            "args":[
+                "--login",
+                "-i"
+            ],
+        }
+
+#After saving this in settings.json, open a new terminal and it should be the zsh one
+#also if you try which gfortran in your new integrated zsh terminal in vscode it might be missing the pathing and give an error, in that case do the following
+
+export PATH=/mingw64/bin:/usr/local/bin:/usr/bin:/bin:$PATH #put this in the integrated terminal to add /mingw64/bin 
+
+which gfortran #try to see if it finds it now
+
+echo 'export PATH=/mingw64/bin:/usr/local/bin:/usr/bin:/bin:$PATH' >> ~/.zshrc #if it does find it enter this to make the PATH change permanent
+
+
+VIDEO 4 (Test c++ project)
+
+#When you download the extension vscode might automatically ask you to install some more extensions that have been developed since the video came out, install them.
+Once you create the Makefile you change the following
+
+CXXFLAGS = -std=c++11 -g -O0 -Wall -Wextra -Wshadow -Wnon-virtual-dtor -pedantic
+
+VIDEO 5 (FINALLY FORTRAN)
+#At the beginning of the video he installs breakpoint and intellisense extensions, do not install those, both are supported in the Modern Fortran extension
+
+
+# Compiler settings - Can be customized.
+CC = gfortran
+CPP = gfortran -cpp
+CXXFLAGS = -g -O0 -Wall -Wextra -Wshadow -pedantic
+LDFLAGS = 
+
+# Makefile settings - Can be customized.
+APPNAME = myapp
+EXT = .f90
+SRCDIR = src
+OBJDIR = obj
+
+
+#Now because the extensions he installed do not have the same options as Modern Fortran extension, you'll need to look for the "Fortran>Linter:Compiler Path setting and put your fortls.exe path there
+
+#Also because of the previous reason you might not see a specific setting for the Compiler path, you will need to make it in the settings.json file by putting this in, obviously replace with your own directory
+
+"fortran.linter.compilerPath": "C:\\Fortran\\MSYS2\\mingw64\\bin\\gfortran.exe",
+
+#Video 6 is not 

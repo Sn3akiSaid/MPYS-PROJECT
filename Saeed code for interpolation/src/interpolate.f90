@@ -46,7 +46,7 @@
       xk(1)= -sqrt(dot_product(ktemp1,ktemp1))
       xkl(1)=xk(1)
       
-
+!Creates a list of 100 points inbetween BZ points LAL
       k=0
       ktemp1=0d0
       do i=1,nkpath-1

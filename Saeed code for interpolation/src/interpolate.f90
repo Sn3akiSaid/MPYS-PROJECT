@@ -6,7 +6,7 @@
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=100,npartitions=10
+      integer,parameter::nkpath=3,np=100,npartitions=50
 !------------------------------------------------------
       integer*4 ik,ipart
       real*8 alpha,ef(npartitions),gap(npartitions)
@@ -178,7 +178,7 @@
 !=============================================
 ! This subroutine generates a gnuplot script
 ! to plot the band structures
-!============================================
+!============================================!
       subroutine write_plt(nkp,xkl,kl)
       implicit none
       integer nkp,i
@@ -196,17 +196,18 @@
       write(99,'(a)') &
            'set terminal pdfcairo enhanced font "DejaVu"  transparent fontscale 1 size 5.00in, 7.50in'
       write(99,'(a,f4.2,a)')'set output "band.pdf"'
-      write(99,'(9(a,/),a)') &
+           write(99,'(9(a,/),a)') &
            'set encoding iso_8859_1',&
            'set size ratio 0 1.0,1.0',&
            'set ylabel "E-E_{VBM} (eV)"',&
-           'set yrange [ -6 : 4.0 ]',&
+           'set yrange [ -0.5 : 0.5 ]',&
            'unset key',&
            'set ytics 1.0 scale 1 nomirror out',&
            'set mytics 2',&
+           'set terminal qt persist',&
            'set parametric',&
            'set trange [-10:10]',&
-           'plot "band.dat" u 1:2 with l lt 1 lw 3,\'
+           'plot for [i=1:20]sprintf("band_partition_%d.dat", i) u 1:2 with l lt 1 lw ,\'
      do i=2,nkp-1
        write(99,'(f12.6,a)') xkl(i),',t with l lt 2  lc -1,\'
      enddo

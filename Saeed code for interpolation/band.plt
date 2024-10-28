@@ -10,9 +10,9 @@ set size ratio 0 1.0,1.0
 set ylabel "E-E_{VBM} (eV)"
 set yrange [ -0.5 : 0.5 ]
 unset key
-set ytics 1.0 scale 1 nomirror out
+set ytics 0.1 scale 1 nomirror out
 set mytics 2
-set terminal qt persist
+#set terminal qt persist
 set parametric
 set trange [-10:10]
 

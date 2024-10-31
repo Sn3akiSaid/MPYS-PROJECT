@@ -2,7 +2,7 @@
 ! This program adibatically interpolates the energy between two
 ! topological phases of BiTeI.
 !==============================================================
-      Program interpolate_topology
+Program interpolate_topology
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="BiTeI"
@@ -38,6 +38,8 @@
       data kpath(:,1) /    -0.1d0,      0.0d0,    0.5d0/  !L
       data kpath(:,2) /     0.0d0,      0.0d0,    0.5d0/  !A
       data kpath(:,3) /     0.1d0,      0.0d0,    0.5d0/  !L
+      data kpath(:,4) /     0.1d0,      0.1d0,    0.5d0/  !H
+      data kpath(:,5) /     0.1d0,     -0.1d0,    0.5d0/  !H
 
       data klabel     /'L','A','L'/
 
@@ -215,3 +217,5 @@
      enddo
      write(99,'(a)') 't,0 with l lt 2  lc -1'
      end subroutine write_plt
+
+    

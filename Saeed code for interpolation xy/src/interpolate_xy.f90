@@ -168,7 +168,7 @@ data kpath(:, 5) /  0.1d0, -0.1d0, 0.5d0 /  ! H
    
                ! Compute phase factors
                do i=1,3
-                      phase_trivial=phase_trivial    +kxlist(i,k)*rvec_trivial(i,j)+kylist(i,k)*rvec_trivial(i,j)
+                      phase_trivial=phase_trivial    +kxlist(i,k)*rvec_trivial(i,j)+kylist(i,k)*rvec_trivial(i,j) !tried adding the ky phase in the overall phase for these which resulted in the NaNs and infinities
                   phase_topological=phase_topological+kxlist(i,k)*rvec_topological(i,j)+kylist(i,k)*rvec_topological(i,j)
                enddo
    

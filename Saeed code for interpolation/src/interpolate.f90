@@ -2,7 +2,7 @@
 ! This program adibatically interpolates the energy between two
 ! topological phases of BiTeI.
 !==============================================================
-      Program interpolate_topology
+Program interpolate_topology
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="BiTeI"
@@ -38,6 +38,8 @@
       data kpath(:,1) /    -0.1d0,      0.0d0,    0.5d0/  !L
       data kpath(:,2) /     0.0d0,      0.0d0,    0.5d0/  !A
       data kpath(:,3) /     0.1d0,      0.0d0,    0.5d0/  !L
+      data kpath(:,4) /     0.1d0,      0.1d0,    0.5d0/  !H
+      data kpath(:,5) /     0.1d0,     -0.1d0,    0.5d0/  !H
 
       data klabel     /'L','A','L'/
 
@@ -133,11 +135,13 @@
                                        dcmplx(cos(phase_topological),-sin(phase_topological))/float(ndeg_topological(j))
                   enddo
                enddo
-   
+            !print *, alpha
             enddo
 
             HK=alpha*HK_trivial+(1d0-alpha)*HK_topological
-   
+            !print *, HK
+            !HK_crit = minval(abs(HK))
+           ! print *, HK_crit
             call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
             
          enddo
@@ -159,7 +163,7 @@
          enddo
          close(100)
 !------- export gap
-         write(777,'(i5,f10.8,f8.5)')ipart,alpha,gap(ipart)
+         write(777,'(f10.8,f8.5)') alpha,gap(ipart) !this had ipart in front of alpha
       enddo
 !------- call plt script of gnuploting
       call write_plt(nkpath,xkl,klabel)
@@ -207,9 +211,11 @@
            'set terminal qt persist',&
            'set parametric',&
            'set trange [-10:10]',&
-           'plot for [i=1:20]sprintf("band_partition_%d.dat", i) u 1:2 with l lt 1 lw ,\'
+           'plot for [i=1:20]sprintf("band_partition_%d.dat", i) u 1:2 with l lt 1 lw 0.5,\'
      do i=2,nkp-1
        write(99,'(f12.6,a)') xkl(i),',t with l lt 2  lc -1,\'
      enddo
      write(99,'(a)') 't,0 with l lt 2  lc -1'
      end subroutine write_plt
+
+    

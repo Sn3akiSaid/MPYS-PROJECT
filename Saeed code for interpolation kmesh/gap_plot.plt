@@ -8,7 +8,7 @@ print "Min_E:", STATS_min
 set title "energy vs alpha"
 set xlabel "alpha"
 set ylabel "energy"
-
+set xrange [0 : 1]
 set terminal qt persist
 
 plot gap using 1:2 with linespoints lt 1 lw 0.5

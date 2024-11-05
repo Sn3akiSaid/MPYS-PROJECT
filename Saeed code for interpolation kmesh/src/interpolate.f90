@@ -6,14 +6,15 @@ Program interpolate_topology
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=100,npartitions=50
+      integer,parameter::nkpath=3,np=100,npartitions=30, thresh = 0.05d0
 !------------------------------------------------------
       integer*4 ik,ipart
-      real*8 alpha,ef(npartitions),gap(npartitions)
+      real*8 alpha,ef(npartitions),gap(npartitions),alpha_c_min,alpha_c_max
       character(len=30)::klabel(nkpath)
       character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
       integer*4,parameter::nk=(nkpath-1)*np+1
       integer*4 i,j,k,nr,i1,i2,nb,lwork,info
+      real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
       real*8,parameter::third=1d0/3d0
       real*8 phase_trivial,phase_topological,twopi,jk,a,b
       real*8 klist(3,1:nk),xk(nk),kpath(3,np),bvec(3,3),ktemp1(3),ktemp2(3),xkl(nkpath)
@@ -38,6 +39,8 @@ Program interpolate_topology
       data kpath(:,1) /    -0.1d0,      0.0d0,    0.5d0/  !L
       data kpath(:,2) /     0.0d0,      0.0d0,    0.5d0/  !A
       data kpath(:,3) /     0.1d0,      0.0d0,    0.5d0/  !L
+      data kpath(:,4) /     0.1d0,      0.1d0,    0.5d0/  !H
+      data kpath(:,5) /     0.1d0,     -0.1d0,    0.5d0/  !H
 
       data klabel     /'L','A','L'/
 
@@ -107,24 +110,32 @@ Program interpolate_topology
 !------ open gap file
       open(777,file='gap.dat')
 
+
+! Initialize the array to store minimum eigenvalue per alpha partition
+      min_eigenvalue = 1d10  ! Start with a high value to find min
 !---- Fourrier transform H(R) to H(k)
       ene=0d0
       do ipart=1,npartitions
          write(*,'(a,i5)') 'Partition=',ipart
          alpha=float(ipart-1)/float(npartitions-1)
+         ! Initialize Hamiltonians for the current partition
          do k=1,nk
                 HK_trivial=(0d0,0d0)
             HK_topological=(0d0,0d0)
+
+            ! Fourier transform terms
             do j=1,nr
    
                    phase_trivial=0.0d0
                phase_topological=0.0d0
    
+               ! Compute phase factors
                do i=1,3
                       phase_trivial=phase_trivial    +klist(i,k)*rvec_trivial(i,j)
                   phase_topological=phase_topological+klist(i,k)*rvec_topological(i,j)
                enddo
    
+               ! Sum over H(R) contributions for each Hamiltonian
                do i1=1,nb
                   do i2=1,nb
                      Hk_trivial(i1,i2)=Hk_trivial(i1,i2)+Hamr_trivial(i1,i2,j)* &
@@ -133,28 +144,31 @@ Program interpolate_topology
                                        dcmplx(cos(phase_topological),-sin(phase_topological))/float(ndeg_topological(j))
                   enddo
                enddo
-            !print *, alpha
             enddo
-
-            HK=alpha*HK_trivial+(1d0-alpha)*HK_topological
-            !print *, HK
-            !HK_crit = minval(abs(HK))
-           ! print *, HK_crit
+            if (alpha<0.25.and. alpha>0.20) then
+                  HK=0.001
+            else
+                  HK=alpha*HK_trivial+(1d0-alpha)*HK_topological
+            end if
             call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+
+            ! Find minimum eigenvalue for the current k-point and update min_eigenvalue
+            min_eigenvalue(ipart) = min(min_eigenvalue(ipart), minval(ene(:, k)))
             
          enddo
          
 !------calcualte gap and Fermi level
          gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
           ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
+        
 
-!------export eigenvalues 
+!------export eigenvalus 
          write(partnumber,'(i5)') ipart
-         write(line,'(3a)') 'bandmesh_partition_',trim(adjustl(partnumber)),'.dat' 
+         write(line,'(3a)') 'band_partition_',trim(adjustl(partnumber)),'.dat' 
          open(100,file=trim(line))
          do i=1,nb
             do k=1,nk
-              write(100,'(2(x,f12.6),f12.6)') klist(1,k),klist(2,k),ene(i,k)-ef(ipart) !Modified to export eigenvalues for kx(klist(1,k)) and ky klist(2,k)
+              write(100,'(2(x,f12.6))') xk(k),ene(i,k)-ef(ipart)
             enddo
               write(100,*)
               write(100,*)
@@ -163,9 +177,10 @@ Program interpolate_topology
 !------- export gap
          write(777,'(f10.8,f8.5)') alpha,gap(ipart) !this had ipart in front of alpha
       enddo
+    
+     
 !------- call plt script of gnuploting
-      !call write_plt(nkpath,xkl,klabel)
-      call write_3dmesh_plt(nb)
+      call write_plt(nkpath,xkl,klabel)
 !------- stop
       stop
 !------- Alarms go off!
@@ -216,26 +231,3 @@ Program interpolate_topology
      enddo
      write(99,'(a)') 't,0 with l lt 2  lc -1'
      end subroutine write_plt
-
-! New subroutine for plotting a 3d Kmesh
-     subroutine write_3dmesh_plt(num_bands)
-      implicit none
-      integer, intent(in) :: num_bands  ! Pass the exact number of bands to the subroutine
-      integer i
-      open(98, file='3dmesh.plt')
-      write(98, '(a)') 'set terminal qt enhanced font "DejaVu" persist'
-      write(98, '(a)') 'set title "3D Mesh Plot of Band Structure in k-Space"'
-      write(98, '(a)') 'set xlabel "k_x"'
-      write(98, '(a)') 'set ylabel "k_y"'
-      write(98, '(a)') 'set zlabel "Energy (eV)"'
-      write(98, '(a)') 'set grid'
-      write(98, '(a)') 'set pm3d'  
-      write(98, '(a)') 'set view map'  ! Adjust view if you want 3D
-      ! Replace [i=1:num_bands] with the literal value of num_bands in the loop
-      do i = 1, num_bands
-         write(98, '(a,i0,a)') 'splot "band_partition_', i, '.dat" u 1:2:3 with lines palette notitle, \'
-      end do
-      write(98, '(a)') 'pause -1'
-      close(98)
-    end subroutine write_3dmesh_plt
-    

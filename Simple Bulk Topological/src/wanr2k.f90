@@ -3,10 +3,9 @@ program wannier_band_structure
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
     integer,parameter::nkpath=8,np=100
-    real*8, parameter::ef= 4.18903772
 !------------------------------------------------------ Assign values
     integer*4 ik,ikmax
-    real*8 kz
+    real*8 kz,ef
     character(len=30)::klabel(nkpath)
     character(len=80) hamil_file,nnkp,line
     integer*4,parameter::nk=(nkpath-1)*np+1
@@ -111,7 +110,7 @@ program wannier_band_structure
        call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
        
     enddo
-    
+    ef=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
     do i=1,nb
        do k=1,nk
          write(100,'(2(x,f12.6))') xk(k),ene(i,k)

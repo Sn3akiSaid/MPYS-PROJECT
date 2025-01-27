@@ -6,7 +6,7 @@ Program interpolate_topology
       Implicit None
 !--------to be midified by the usere
       character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=100,npartitions=30, thresh = 0.05d0
+      integer,parameter::nkpath=3,np=100,npartitions=10, thresh = 0.05d0
 !------------------------------------------------------
       integer*4 ik,ipart
       real*8 alpha,ef(npartitions),gap(npartitions),alpha_c_min,alpha_c_max
@@ -36,11 +36,11 @@ Program interpolate_topology
       
       read(98,*)bvec
 !---------------kpath
-      data kpath(:,1) /    -0.1d0,      0.0d0,    0.5d0/  !L
+      data kpath(:,1) /    -0.1d0,      0.1d0,    0.5d0/  !L
       data kpath(:,2) /     0.0d0,      0.0d0,    0.5d0/  !A
-      data kpath(:,3) /     0.1d0,      0.0d0,    0.5d0/  !L
-      data kpath(:,4) /     0.1d0,      0.1d0,    0.5d0/  !H
-      data kpath(:,5) /     0.1d0,     -0.1d0,    0.5d0/  !H
+      data kpath(:,3) /     0.1d0,      0.1d0,    0.5d0/  !L
+     ! data kpath(:,4) /     0.1d0,      0.1d0,    0.5d0/  !H
+     ! data kpath(:,5) /     0.1d0,     -0.1d0,    0.5d0/  !H
 
       data klabel     /'L','A','L'/
 
@@ -153,7 +153,7 @@ Program interpolate_topology
             call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
 
             ! Find minimum eigenvalue for the current k-point and update min_eigenvalue
-            min_eigenvalue(ipart) = min(min_eigenvalue(ipart), minval(ene(:, k)))
+            !min_eigenvalue(ipart) = min(min_eigenvalue(ipart), minval(ene(:, k)))
             
          enddo
          

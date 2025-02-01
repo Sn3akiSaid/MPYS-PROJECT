@@ -7,7 +7,7 @@ Program interpolate_topology
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
     integer,parameter::nkpath=3,np=100,npartitions=2
-    real,parameter::B_x=0, B_y=0.01, B_z=0
+    real,parameter::B_x=0, B_y=0.1, B_z=0
 !------------------------------------------------------
     integer*4 ik,ipart, is, ib
     real*8 alpha,ef(npartitions),gap(npartitions),write_values(12:13),&
@@ -17,11 +17,15 @@ Program interpolate_topology
     integer*4,parameter::nk=(nkpath-1)*np+1
     integer*4 i,j,k,nr,i1,i2,nb,lwork,info,steps
     real*8,parameter::third=1d0/3d0,mthird=-1d0/3d0,twothird=2d0/3d0,mtwothird=-2d0/3d0
-    real*8 phase_trivial,phase_topological,twopi,jk,a,b
+    real*8 phase_trivial,phase_topological,twopi,jk,a,b,&
+           spin_x(1,1),spin_y(1,1),spin_z(1,1),&
+           spin_xp(1,1),spin_yp(1,1),spin_zp(1,1)
     real*8 klist(3,1:nk),xk(nk),kpath(3,np),bvec(3,3),ktemp1(3),ktemp2(3),xkl(nkpath)
-    real*8,allocatable:: rvec_trivial(:,:),rvec_topological(:,:),ene(:,:),rwork(:),enep(:,:)
+    real*8,allocatable:: rvec_trivial(:,:),rvec_topological(:,:),ene(:,:),rwork(:),enep(:,:),&
+                         spin(:,:,:),spinp(:,:,:)
     integer*4,allocatable:: ndeg_trivial(:),ndeg_topological(:)
     complex*8 sigx(2, 2), sigy(2, 2), sigz(2, 2)
+    complex*16 chi(2,1),chip(2,1)
     complex*16,allocatable::Hm(:,:), Hk(:,:),HK_trivial(:,:),HK_topological(:,:),Hamr_trivial(:,:,:), H(:,:)
     complex*16,allocatable:: Hamr_topological(:,:,:),work(:)
 !------------------------------------------------------
@@ -38,9 +42,9 @@ Program interpolate_topology
     
     read(98,*)bvec
 !---------------kpath
-    data kpath(:,1) /     0.0d0,       -0.1d0,    0.5d0/  !L
+    data kpath(:,1) /     -0.1d0,       0.0d0,    0.5d0/  !L
     data kpath(:,2) /     0.0d0,       0.0d0,    0.5d0/  !A
-    data kpath(:,3) /     0.0d0,       0.1d0,    0.5d0/  !H
+    data kpath(:,3) /     0.1d0,       0.0d0,    0.5d0/  !H
 
     data sigx /(0d0,0d0),(1d0,0d0),(1d0, 0d0),( 0d0, 0d0)/
     data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
@@ -113,7 +117,7 @@ Program interpolate_topology
 !------ LAPACK-related array allocations
     lwork=max(1,2*nb-1)
     allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
-
+    allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
 !------ open gap file
     open(777,file='gap.dat')
 
@@ -165,10 +169,34 @@ Program interpolate_topology
                 H(is+nb/2,is)=H(is+nb/2,is)+Hm(2,1)
                 H(is,is+nb/2)=H(is,is+nb/2)+Hm(1,2)
                 H(is+nb/2,is+nb/2)=H(is+nb/2,is+nb/2)+Hm(2,2)
-          enddo
+            enddo
           call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
           call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
 
+          do ib=1,nb
+            do is=1,nb/2
+                  chi(1,1) = Hk(is     ,ib) 
+                  chi(2,1) = Hk(is+nb/2,ib)
+                  chip(1,1) = H(is     ,ib) 
+                  chip(2,1) = H(is+nb/2,ib)
+                  
+                  spin_x = matmul(conjg(transpose(chi)),matmul(sigx, chi))
+                  spin_y = matmul(conjg(transpose(chi)),matmul(sigy, chi))
+                  spin_z = matmul(conjg(transpose(chi)),matmul(sigz, chi))
+                  spin(1,ib,k)=spin(1,ib,k)+spin_x(1,1)
+                  spin(2,ib,k)=spin(2,ib,k)+spin_y(1,1)
+                  spin(3,ib,k)=spin(3,ib,k)+spin_z(1,1)
+                  !Calculate spins for Perturbed Hamiltonian
+                  spin_xp = matmul(conjg(transpose(chip)),matmul(sigx, chip))
+                  spin_yp = matmul(conjg(transpose(chip)),matmul(sigy, chip))
+                  spin_zp = matmul(conjg(transpose(chip)),matmul(sigz, chip))
+
+                  spinp(1,ib,k)=spinp(1,ib,k)+spin_xp(1,1)
+                  spinp(2,ib,k)=spinp(2,ib,k)+spin_yp(1,1)
+                  spinp(3,ib,k)=spinp(3,ib,k)+spin_zp(1,1)
+                  
+            enddo
+      enddo
        enddo
        
 !------calcualte gap and Fermi level
@@ -179,6 +207,8 @@ Program interpolate_topology
        write(partnumber,'(i5)') ipart
        write(line,'(3a)') 'band_partition_',trim(adjustl(partnumber)),'.dat' 
        open(100,file=trim(line))
+       !open(200,file="unperturbed_spins.dat")
+      ! open(300,file="perturbed_spins.dat")
        do i = 11, 14
           do k=1,nk
          !       ! Check if ene(i,k) - ef(ipart) is less than 0.01 and set it to 0 if true
@@ -188,13 +218,25 @@ Program interpolate_topology
              !   write_values = ene(i,k) - ef(ipart)
               !  end if
                 ! Write the values to the file
-                write(100, '(3(x,f12.6))') xk(k), ene(i,k)-ef(ipart),enep(i,k)-ef(ipart)
-    
+                write(100, '(5(x,f12.6))') xk(k), ene(i,k)-ef(ipart),&
+                                           spin(3,i,k)/(sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)),&
+                                           enep(i,k)-ef(ipart),&
+                                           spinp(3,i,k)/(sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2))
+                !write(200,'(4(x,f12.6))') spin(3,i,k),sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)
+                !write(300,'(4(x,f12.6))') spinp(3,i,k),sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)
+
              enddo
-      write(100,*)
-      write(100,*)
-    enddo
+        write(100,*)
+        write(100,*)
+!        write(200,*)
+ !       write(200,*)
+  !      write(300,*)
+   !     write(300,*)
+
+        enddo
        close(100)
+    !   close(200)
+     !  close(300)
 !------- export gap
        write(777,'(f10.8,f8.5)') alpha,gap(ipart) !this had ipart in front of alpha
     enddo

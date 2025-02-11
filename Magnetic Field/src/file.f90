@@ -1,33 +1,51 @@
 !==============================================================
 ! This program adibatically interpolates the energy between two
 ! topological phases of BiTeI.
+! Calculates a magnetic perturbation
+! Calculates spins for a given Hamiltonian
 !==============================================================
 Program interpolate_topology
     Implicit None
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
     integer,parameter::nkpath=3,np=100,npartitions=2
-    real,parameter::B_x=0, B_y=0.1, B_z=0
+!---Magnetic Field to be modified by User
+    real*8,parameter::B_x=0d0, B_y=0.1d0, B_z=0d0
 !------------------------------------------------------
-    integer*4 ik,ipart, is, ib
-    real*8 alpha,ef(npartitions),gap(npartitions),write_values(12:13),&
-           start_alpha,end_alpha,step_size!, B_field(3)
+    integer ik, ipart, is, ib
+    real*8 alpha,ef(npartitions),gap(npartitions)!,write_values(12:13)!,&
+           !start_alpha,end_alpha,step_size!, B_field(3)
     character(len=30)::klabel(nkpath)
     character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
-    integer*4,parameter::nk=(nkpath-1)*np+1
-    integer*4 i,j,k,nr,i1,i2,nb,lwork,info,steps
-    real*8,parameter::third=1d0/3d0,mthird=-1d0/3d0,twothird=2d0/3d0,mtwothird=-2d0/3d0
-    real*8 phase_trivial,phase_topological,twopi,jk,a,b,&
+    integer,parameter::nk=(nkpath-1)*np+1
+    integer i,j,k,&
+            nr,nb,&
+            i1,i2,&
+            lwork,info!,steps
+    real*8,parameter::third=1d0/3d0,mthird=-1d0/3d0,&
+                      twothird=2d0/3d0,mtwothird=-2d0/3d0
+
+    real*8 phase_trivial,phase_topological,&
+           twopi,jk,a,b,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
-           spin_xp(1,1),spin_yp(1,1),spin_zp(1,1)
-    real*8 klist(3,1:nk),xk(nk),kpath(3,np),bvec(3,3),ktemp1(3),ktemp2(3),xkl(nkpath)
-    real*8,allocatable:: rvec_trivial(:,:),rvec_topological(:,:),ene(:,:),rwork(:),enep(:,:),&
-                         spin(:,:,:),spinp(:,:,:)
-    integer*4,allocatable:: ndeg_trivial(:),ndeg_topological(:)
-    complex*8 sigx(2, 2), sigy(2, 2), sigz(2, 2)
-    complex*16 chi(2,1),chip(2,1)
-    complex*16,allocatable::Hm(:,:), Hk(:,:),HK_trivial(:,:),HK_topological(:,:),Hamr_trivial(:,:,:), H(:,:)
-    complex*16,allocatable:: Hamr_topological(:,:,:),work(:)
+           spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
+           klist(3,1:nk),kpath(3,np),bvec(3,3),ktemp1(3),ktemp2(3),&
+           xk(nk),xkl(nkpath)
+
+    real*8,allocatable:: rvec_trivial(:,:),rvec_topological(:,:),&
+                         ene(:,:),enep(:,:),&
+                         spin(:,:,:),spinp(:,:,:),&
+                         rwork(:)
+
+    integer,allocatable:: ndeg_trivial(:),ndeg_topological(:)
+
+    complex*16 sigx(2, 2), sigy(2, 2), sigz(2, 2),&
+               chi(2,1), chip(2,1)
+
+    complex*16,allocatable::H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:),&
+                            HK_trivial(:,:), HK_topological(:,:),&
+                            Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
+                            work(:)
 !------------------------------------------------------
     write(hamil_file_trivial,'(a,a)')trim(adjustl(prefix)),"_hr_trivial.dat"
     write(hamil_file_topological,'(a,a)')trim(adjustl(prefix)),"_hr_topological.dat"
@@ -42,17 +60,23 @@ Program interpolate_topology
     
     read(98,*)bvec
 !---------------kpath
-    data kpath(:,1) /     -0.1d0,       0.0d0,    0.5d0/  !L
-    data kpath(:,2) /     0.0d0,       0.0d0,    0.5d0/  !A
-    data kpath(:,3) /     0.1d0,       0.0d0,    0.5d0/  !H
+!ky
+    !data kpath(:,1) /     0.1d0,  -0.2d0,        0.5d0/  !L
+    !data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
+    !data kpath(:,3) /     -0.1d0,  0.2d0,           0.5d0/  !H
+!kx
+    data kpath(:,1) /     -0.1d0,  0.0d0,        0.5d0/  !L
+    data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
+    data kpath(:,3) /     0.1d0,  0.0d0,           0.5d0/  !H
 
     data sigx /(0d0,0d0),(1d0,0d0),(1d0, 0d0),( 0d0, 0d0)/
     data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
     data sigz /(1d0,0d0),(0d0,0d0),(0d0, 0d0),(-1d0, 0d0)/
 
     !data B_field / B_x, B_y, B_z/ !Magnetic field vector
-    allocate(Hm(2,2))
+    allocate(Hm(2,2),Hmag(18,18))
     Hm = B_x*sigx + B_y*sigy + B_z*sigz
+
     data klabel     /'L','A','H'/
 
     ktemp1(:)=(kpath(1,1)-kpath(1,2))*bvec(:,1)+(kpath(2,1)-kpath(2,2))*bvec(:,2)+(kpath(3,1)-kpath(3,2))*bvec(:,3)
@@ -133,6 +157,15 @@ Program interpolate_topology
        !alpha=float(ipart-1)/float(npartitions-1)
      !  alpha=start_alpha+(ipart-1)*step_size
       ! print *, alpha
+    !Hmag=(0d0,0d0)
+    do i=1, nb/2
+        !do j=1,nb/2
+            Hmag(i,i)=Hm(1,1)
+            Hmag(i,i+nb/2)=Hm(1,2)
+            Hmag(i+nb/2,i)=Hm(2,1)
+            Hmag(i+nb/2,i+nb/2)=Hm(2,2)
+       ! enddo
+    enddo
     !---- Fourrier transform H(R) to H(k)
     ene=0d0
     do ipart=1,npartitions
@@ -163,13 +196,9 @@ Program interpolate_topology
 
           HK=alpha*HK_topological+(1d0-alpha)*HK_trivial
 
-          H=Hk
-            do is=1, nb/2
-                H(is,is)=H(is,is)+Hm(1,1)
-                H(is+nb/2,is)=H(is+nb/2,is)+Hm(2,1)
-                H(is,is+nb/2)=H(is,is+nb/2)+Hm(1,2)
-                H(is+nb/2,is+nb/2)=H(is+nb/2,is+nb/2)+Hm(2,2)
-            enddo
+          H=Hk+Hmag
+          
+
           call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
           call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
 
@@ -219,9 +248,9 @@ Program interpolate_topology
               !  end if
                 ! Write the values to the file
                 write(100, '(5(x,f12.6))') xk(k), ene(i,k)-ef(ipart),&
-                                           spin(3,i,k)/(sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)),&
+                                           spin(2,i,k)/(sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)),&
                                            enep(i,k)-ef(ipart),&
-                                           spinp(3,i,k)/(sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2))
+                                           spinp(2,i,k)/(sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2))
                 !write(200,'(4(x,f12.6))') spin(3,i,k),sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)
                 !write(300,'(4(x,f12.6))') spinp(3,i,k),sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)
 

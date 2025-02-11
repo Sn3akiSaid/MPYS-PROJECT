@@ -35,6 +35,7 @@ Program interpolate_topology
     complex*16 chi(2,1),phi(3)
     real*8,allocatable:: spin(:,:,:)
     real*8 spin_x(1,1),spin_y(1,1),spin_z(1,1)
+    real*8 :: start_time, part_time, start_time2, part_time2
     complex*8 sigx(2, 2), sigy(2, 2), sigz(2, 2)
     integer ib,is
 !------------------------------------------------------
@@ -168,7 +169,7 @@ Program interpolate_topology
                   H(i+nb/2,i+nb/2)=H(i+nb/2,i+nb/2)+Hm(2,2)
             enddo
 !----------Compute eigenvalues and eigenvectors
-            call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+            call zheev('V','U',nb,H,nb,ene(:,k),work,lwork,rwork,info)
 !----------Find spins by applying pauli             
             do ib=1,nb
                   do is=1,nb/2
@@ -206,8 +207,8 @@ Program interpolate_topology
                      ! end if
                  ! enddo
                   write(100,'(12(x,f12.6))') mesh(1:2,k),&
-                                            (ene(i,k),spin(1:3,i,k),&!need to minimize the energy wrt fermi energy
-                                            sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2),i=13,14) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
+                                            ene(13,k),spin(1:3,13,k),&!need to minimize the energy wrt fermi energy
+                                            sqrt(spin(1,13,k)**2 +spin(2,13,k)**2 +spin(3,13,k)**2) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)
             enddo
               write(100,*)

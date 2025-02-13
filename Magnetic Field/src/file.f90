@@ -6,11 +6,11 @@
 !==============================================================
 Program interpolate_topology
     Implicit None
-!--------to be midified by the usere
+!--------to be midified by the user
     character(len=80):: prefix="BiTeI"
-    integer,parameter::nkpath=3,np=100,npartitions=2
+    integer,parameter::nkpath=3,np=100,npartitions=36
 !---Magnetic Field to be modified by User
-    real*8,parameter::B_x=0d0, B_y=0.1d0, B_z=0d0
+    real*8,parameter::B_x=0d0, B_y=0d0, B_z=0.1d0
 !------------------------------------------------------
     integer ik, ipart, is, ib
     real*8 alpha,ef(npartitions),gap(npartitions)!,write_values(12:13)!,&
@@ -64,10 +64,16 @@ Program interpolate_topology
     !data kpath(:,1) /     0.1d0,  -0.2d0,        0.5d0/  !L
     !data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
     !data kpath(:,3) /     -0.1d0,  0.2d0,           0.5d0/  !H
+
 !kx
-    data kpath(:,1) /     -0.1d0,  0.0d0,        0.5d0/  !L
+   ! data kpath(:,1) /     -0.1d0,  0.0d0,        0.5d0/  !L
+   ! data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
+   ! data kpath(:,3) /     0.1d0,  0.0d0,           0.5d0/  !H
+
+!LAH
+    data kpath(:,1) /     -0.1d0,  0.1d0,        0.5d0/  !L
     data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
-    data kpath(:,3) /     0.1d0,  0.0d0,           0.5d0/  !H
+    data kpath(:,3) /     0.1d0,  0.1d0,           0.5d0/  !H
 
     data sigx /(0d0,0d0),(1d0,0d0),(1d0, 0d0),( 0d0, 0d0)/
     data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
@@ -168,8 +174,9 @@ Program interpolate_topology
     enddo
     !---- Fourrier transform H(R) to H(k)
     ene=0d0
-    do ipart=1,npartitions
+    do ipart=30,npartitions
        write(*,'(a,i5)') 'Partition=',ipart
+       !alpha=0.88888
        alpha=float(ipart-1)/float(npartitions-1)
        do k=1,nk
               HK_trivial=(0d0,0d0)
@@ -229,7 +236,7 @@ Program interpolate_topology
        enddo
        
 !------calcualte gap and Fermi level
-       gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
+       gap(ipart)= minval(enep(13,:))-maxval(enep(12,:))
         ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
 
 !------export eigenvalus 

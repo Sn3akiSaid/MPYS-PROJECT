@@ -6,9 +6,9 @@ Program interpolate_topology
       Implicit None
 !--------Presets
       character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=150,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+      integer,parameter::nkpath=3,np=200,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
       
-      real*8,parameter::B_x = 0d0, B_y = 0.1d0, B_z = 0d0
+      real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0
 !---------Variable allocation
       character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
       character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
@@ -224,17 +224,12 @@ Program interpolate_topology
 !------calcualte gap and Fermi level
          gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
-         !write(*,*) 'Debug: Gap for partition ', ipart, ' = ', gap(ipart)
-         !write(*,*) 'Debug: Fermi level for partition ', ipart, ' = ', ef(ipart)
-
 !------Export data
          write(partnumber,'(i5)') ipart
-         write(line,'(3a)') 'Energy_part',trim(adjustl(partnumber)),'.dat' 
+         write(line,'(3a)') 'Energy_part_0.2B',trim(adjustl(partnumber)),'.dat' 
          open(100,file=trim(line))
          open(200,file='energy.dat')
-         !open(1000, file='mesh_ene.dat', action = 'write')
-      !do i1=11,14
-            !i=13 !Obviously not the right way to do it but this means we only write the values for the 13th band, you could still output all 18 but you would need a way to parse that in ur plt file without plotting them all at the same time
+
             do k=1,(np+1)**2
                  ! write_values(13:14) = 0.0  ! Assuming i ranges from 11 to 14
                  ! do i = 13,14
@@ -255,7 +250,7 @@ Program interpolate_topology
               write(100,*)
              ! write(200,*)
              ! write(200,*)
-      ! enddo
+      
         
          close(100)
        

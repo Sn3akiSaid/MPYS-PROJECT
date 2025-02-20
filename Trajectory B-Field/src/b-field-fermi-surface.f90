@@ -211,7 +211,7 @@ Program generate_fermi
 !------calcualte gap and Fermi level
        !gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
        ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
-
+       ef= 10
     !    temp_index=0
 
     !    do i = 1,(np+1)**3
@@ -246,7 +246,7 @@ Program generate_fermi
         
           do k=1,(np+1)**3
             !if (enep(13,k).eq.ef(ipart)) then
-                write(200, '(5(x,f12.6))') mesh(1:3,k),ene(13,k)-ef(ipart)
+                write(200, '(5(x,f12.6))') mesh(1:3,k),enep(13,k)-ef(ipart)
             !endif
           enddo
             write(200,*)

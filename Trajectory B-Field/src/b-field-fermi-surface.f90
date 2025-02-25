@@ -6,7 +6,7 @@ Program generate_fermi
     Implicit None
 !--------Presets
     character(len=80):: prefix="BiTeI"
-    integer,parameter::np=30,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+    integer,parameter::np=50,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
     
     real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0 !Run again at B_y=0.05-0.06 to see the gap close
 !---------Variable allocation
@@ -55,9 +55,9 @@ Program generate_fermi
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: x_min = -0.2d0, x_max = 0.2d0,&
-                         y_min = -0.2d0, y_max = 0.2d0,&
-                         z_min = -0.2d0, z_max = 0.2d0
+    real*8, parameter :: x_min = -0.1d0, x_max = 0.1d0,&
+                         y_min = -0.1d0, y_max = 0.1d0,&
+                         z_min = 0.41d0, z_max = 0.59d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -211,7 +211,7 @@ Program generate_fermi
 !------calcualte gap and Fermi level
        !gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
        ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
-       ef= 10
+       !ef= 4.18903772
     !    temp_index=0
 
     !    do i = 1,(np+1)**3
@@ -229,29 +229,29 @@ Program generate_fermi
     !    enddo
 !------Export data
        !write(partnumber,'(i5)') ipart
-       write(line,'(3a)') 'unperturbed_fermi_energies.dat' 
+       write(line,'(3a)') 'k_surface_fermi_energies.dat' 
        open(100,file=trim(line))
         
           do k=1,(np+1)**3
            ! if (ene(13,i).eq.ef(ipart)) then
-                write(100, '(4(x,f12.6))') mesh(1:3,k),ene(13,k)-ef(ipart)
+                write(100, '(6(x,f12.6))') mesh(1:3,k), enep(13,k), ene(13,k), ef(ipart)
            ! endif
           enddo
             write(100,*)
             write(100,*)
        close(100)
 
-       write(line,'(3a)') 'perturbed_fermi_energies.dat' 
-       open(200,file=trim(line))
+    !    write(line,'(3a)') 'perturbed_fermi_energies.dat' 
+    !    open(200,file=trim(line))
         
-          do k=1,(np+1)**3
-            !if (enep(13,k).eq.ef(ipart)) then
-                write(200, '(5(x,f12.6))') mesh(1:3,k),enep(13,k)-ef(ipart)
-            !endif
-          enddo
-            write(200,*)
-            write(200,*)
-       close(200)
+    !       do k=1,(np+1)**3
+    !         !if (enep(13,k).eq.ef(ipart)) then
+    !             write(200, '(5(x,f12.6))') mesh(1:3,k),enep(13,k)-ef
+    !         !endif
+    !       enddo
+    !         write(200,*)
+    !         write(200,*)
+    !    close(200)
      
 !------- Check time taken to calculate
 

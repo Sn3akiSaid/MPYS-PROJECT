@@ -1,6 +1,6 @@
 import numpy as np
 from numpy import sin, cos, pi
-from skimage import measure
+# from skimage import measure
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 import pyvista as pv
@@ -15,24 +15,21 @@ data = np.loadtxt('k_surface_fermi_energies.dat')
 kx = data[:, 0]
 ky = data[:, 1]
 kz = data[:, 2]
-energy = data[:, 4]
-
+energy = data[:, 3]
+energy13 = data[:,4]
 # If your file provides a per-row Fermi energy in the 4th column and the actual energy in the 5th,
 # just swap the indexing. The key idea is to extract each column correctly.
 
 # -------------------------------------------------
 # 2. DEFINE FERMI ENERGY AND FILTER
 # -------------------------------------------------
-# fermi_energy = 4.18903772  # Provided Fermi energy
+# fermi_energy = 4.18903772  # Provided Fermi energy from wanr2k.f90 file
 
-lowest_energy = np.min(energy)
-fermi_energy = 4.198475999999999  # Provided Fermi energy
-lower_bound = fermi_energy - 0.01
-
-#lower_bound = lowest_energy - fermi_energy
-
-# Example: we want to see only points where E-F ~ 0.11 to 0.13
-upper_bound = fermi_energy + 0.01
+lowest_energy = np.min(energy13)
+#fermi_energy = 4.198475999999999  # Provided Fermi energy set from lowest_energy + 0.02
+fermi_energy = lowest_energy
+lower_bound = fermi_energy - 0.012
+upper_bound = fermi_energy + 0.012
 mask = (energy >= lower_bound) & (energy <= upper_bound)
 
 # Filter the scattered data (just for a quick 3D scatter)
@@ -44,7 +41,7 @@ energy_filtered = energy[mask]
 # 3. INTERPOLATE THE FILTERED DATA ONTO A 3D GRID
 # -------------------------------------------------
 # Define the grid resolution. Increase nx, ny, nz for finer detail.
-nx, ny, nz = 20, 20, 20
+nx, ny, nz = 10, 10, 10
 
 # Create a regular grid covering the region of filtered k-space.
 x_lin = np.linspace(kx_filtered.min(), kx_filtered.max(), nx)
@@ -82,7 +79,7 @@ pv.set_plot_theme("document")
 p = pv.Plotter()
 # Color the mesh by its z-coordinate (or any scalar you prefer)
 # p.add_mesh(inner_surface, opacity=0.5, scalars=inner_surface.points[:, 2], show_scalar_bar=True)
-p.add_mesh(contours, color="red", show_scalar_bar=False, opacity=0.4)
+p.add_mesh(contours, color="red", show_scalar_bar=True, opacity=0.4, scalars=contours.points[:, 2])#, show_scalar_bar=True)
 p.add_axes()
 p.add_title("Iso-Surface at Fermi Energy")
 p.show()

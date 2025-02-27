@@ -3,9 +3,9 @@
 ########################################################################
 
 # Compiler settings - Can be customized.
-CC = gfortran
-CPP = gfortran -cpp
-CXXFLAGS = -g -O0 -ffree-line-length-0 
+CC = mpif90
+CPP = mpif90 -cpp
+CXXFLAGS = -g -O0 -ffree-line-length-0 -march=native -funroll-loops -fopenmp -I/usr/lib/x86_64-linux-gnu/openmpi/include
 LDFLAGS = -lblas -llapack
 
 # Makefile settings - Can be customized.
@@ -36,7 +36,7 @@ all: $(APPNAME)
 $(APPNAME): $(OBJ)
 	$(CC) $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 
-# Creates the dependecy rules
+# Creates the dependency rules
 %.d: $(SRCDIR)/%$(EXT)
 	@$(CPP) $(CFLAGS) $< -MM -MT $(@:%.d=$(OBJDIR)/%.o) >$@
 
@@ -46,6 +46,11 @@ $(APPNAME): $(OBJ)
 # Building rule for .o files and its .c/.cpp in combination with all .h
 $(OBJDIR)/%.o: $(SRCDIR)/%$(EXT)
 	$(CC) $(CXXFLAGS) -o $@ -c $<
+
+################### Additional target for running MPI program ##############
+.PHONY: run
+run: $(APPNAME)
+	mpirun -np 2 ./$(APPNAME)
 
 ################### Cleaning rules for Unix-based OS ###################
 # Cleans complete project

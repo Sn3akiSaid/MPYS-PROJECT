@@ -12,11 +12,12 @@ from scipy.interpolate import griddata
 # Replace 'data.txt' with the path to your file
 # If your file has 5 columns, adjust slicing accordingly (e.g., kx, ky, kz, E, Fermi).
 data = np.loadtxt('k_surface_fermi_energies.dat')
+# band = 4
 kx = data[:, 0]
 ky = data[:, 1]
 kz = data[:, 2]
 energy = data[:, 3]
-energy13 = data[:,4]
+energy13 = data[:, 4]
 # If your file provides a per-row Fermi energy in the 4th column and the actual energy in the 5th,
 # just swap the indexing. The key idea is to extract each column correctly.
 
@@ -25,11 +26,12 @@ energy13 = data[:,4]
 # -------------------------------------------------
 # fermi_energy = 4.18903772  # Provided Fermi energy from wanr2k.f90 file
 
-lowest_energy = np.min(energy13)
-#fermi_energy = 4.198475999999999  # Provided Fermi energy set from lowest_energy + 0.02
-fermi_energy = lowest_energy
-lower_bound = fermi_energy - 0.012
-upper_bound = fermi_energy + 0.012
+
+# fermi_energy = 4.198475999999999  # Provided Fermi energy set from lowest_energy + 0.02
+# lowest_energy = np.min(energy13) # Setting the fermi energy to be the unperturbed CBM
+fermi_energy = np.min(energy13)+0.02
+lower_bound = fermi_energy - 0.0001
+upper_bound = fermi_energy + 0.0001
 mask = (energy >= lower_bound) & (energy <= upper_bound)
 
 # Filter the scattered data (just for a quick 3D scatter)
@@ -41,9 +43,14 @@ energy_filtered = energy[mask]
 # 3. INTERPOLATE THE FILTERED DATA ONTO A 3D GRID
 # -------------------------------------------------
 # Define the grid resolution. Increase nx, ny, nz for finer detail.
-nx, ny, nz = 10, 10, 10
+dimension = 30
+nx, ny, nz = dimension, dimension, dimension
 
-# Create a regular grid covering the region of filtered k-space.
+# # Create a regular grid covering the region of filtered k-space.
+# x_lin = np.linspace(kx.min(), kx.max(), nx)
+# y_lin = np.linspace(ky.min(), ky.max(), ny)
+# z_lin = np.linspace(kz.min(), kz.max(), nz)
+
 x_lin = np.linspace(kx_filtered.min(), kx_filtered.max(), nx)
 y_lin = np.linspace(ky_filtered.min(), ky_filtered.max(), ny)
 z_lin = np.linspace(kz_filtered.min(), kz_filtered.max(), nz)
@@ -54,7 +61,7 @@ points = np.column_stack((kx, ky, kz))
 grid_energy = griddata(points, energy, (X, Y, Z), method='linear')
 
 # If there are NaNs (areas not covered by data), you might fill them.
-grid_energy = np.nan_to_num(grid_energy, nan=lowest_energy)
+grid_energy = np.nan_to_num(grid_energy, nan=fermi_energy)
 
 # -------------------------------------------------
 # 4. CREATE A STRUCTURED GRID WITH PYVISTA
@@ -79,7 +86,11 @@ pv.set_plot_theme("document")
 p = pv.Plotter()
 # Color the mesh by its z-coordinate (or any scalar you prefer)
 # p.add_mesh(inner_surface, opacity=0.5, scalars=inner_surface.points[:, 2], show_scalar_bar=True)
-p.add_mesh(contours, color="red", show_scalar_bar=True, opacity=0.4, scalars=contours.points[:, 2])#, show_scalar_bar=True)
-p.add_axes()
+p.add_mesh(contours, color="red", show_scalar_bar=False, opacity=0.4)#, scalars=contours.points[:, 2])#, show_scalar_bar=True)
+# p.add_axes(labels={'x': "$k_x$", 'y': "$k_y$", 'z': "$k_z$"})
+axes_actor = p.add_axes()
+axes_actor.GetXAxisCaptionActor2D().GetTextActor().GetTextProperty().SetFontSize(20)
+axes_actor.GetYAxisCaptionActor2D().GetTextActor().GetTextProperty().SetFontSize(20)
+axes_actor.GetZAxisCaptionActor2D().GetTextActor().GetTextProperty().SetFontSize(20)
 p.add_title("Iso-Surface at Fermi Energy")
 p.show()

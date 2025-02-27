@@ -6,9 +6,9 @@ Program interpolate_topology
       Implicit None
 !--------Presets
       character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=200,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+      integer,parameter::nkpath=3,np=300,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
       
-      real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0
+      real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0
 !---------Variable allocation
       character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
       character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
@@ -153,7 +153,7 @@ Program interpolate_topology
       do ipart=1,npartitions
          write(*,'(a,i5)') 'Partition=',ipart
          !alpha=float(ipart-1)/float(npartitions-1)
-         alpha=0d0
+         alpha=0.777777d0
          ! Initialize Hamiltonians for the current partition
          do k=1,(np+1)**2
                 HK_trivial=(0d0,0d0)
@@ -226,22 +226,21 @@ Program interpolate_topology
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
 !------Export data
          write(partnumber,'(i5)') ipart
-         write(line,'(3a)') 'Energy_part_0.2B',trim(adjustl(partnumber)),'.dat' 
+         write(line,'(3a)') 'Energy_part_0.01B_np300_',trim(adjustl(partnumber)),'.dat' 
          open(100,file=trim(line))
          open(200,file='energy.dat')
-
+            do i=11,14
             do k=1,(np+1)**2
-                 ! write_values(13:14) = 0.0  ! Assuming i ranges from 11 to 14
-                 ! do i = 13,14
-                      ! Check if ene(i,k) - ef(ipart) is less than 0.01 and set it to 0 if true
-                     ! if (abs(ene(i,k)-minval(ene(i,:))) .lt. 0.001) then
-                     !     write_values(i) = 0.0
-                     ! else
-                     !     write_values(i) = ene(i,k)-minval(ene(i,:))
-                     ! end if
-                 ! enddo
-                 ! write(*,*) 'Debug: ene(13,k) - ef(ipart) for k = ', k, ' = ', ene(13,k) - ef(ipart)
-                  write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-ef(ipart), i=11,14)!,&
+                 
+                  ! write(100,'(13(x,f12.6))') mesh(1:2,k),enep(13,k)-minval(enep(13,:)),&
+                  !                                        ene(13,k)-minval(ene(13,:)),&
+                  !                                        (enep(i,k), ene(i,k), i=11,14),&
+                  !                                        ef(ipart)
+                  write(100,'(13(x,f12.6))') mesh(1:2,k),enep(i,k), ene(i,k),&
+                                                         ef(ipart)!,&
+                                                      !    enep(13,k)-minval(enep(13,:)),&
+                                                      !    ene(13,k)-minval(ene(13,:))
+            
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)
@@ -250,7 +249,7 @@ Program interpolate_topology
               write(100,*)
              ! write(200,*)
              ! write(200,*)
-      
+            enddo
         
          close(100)
        

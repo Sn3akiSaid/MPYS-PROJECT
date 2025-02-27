@@ -7,8 +7,11 @@ data = np.loadtxt('Energy_part_0.5B_np500_1.dat')
 
 kx = data[:, 0]
 ky = data[:, 1]
-energy = data[:, 2]
-energy -= np.min(energy)
+energy_band = data[:, 3]
+energy_band1 = data[:, 2]
+
+energy_min = np.min(energy_band)
+energy = energy_band1- energy_min
 
 trian = tri.Triangulation(kx,ky)
 #energies = [0,  0.01, 0.02, 0.04, 0.170, 0.190]
@@ -20,7 +23,7 @@ ax.set_xlim([-0.1, 0.1])      # Set kx range
 ax.set_ylim([-0.1, 0.1])      # Set ky range
 
 # Plot the contour
-initial_level = np.min(energy) + 0.1 * (np.max(energy) - np.min(energy))
+initial_level = np.min(energy) + 0.1 * (0.04 - np.min(energy))
 contour = ax.tricontour(trian, energy, levels=[initial_level], linewidths=1.5, cmap="viridis")
 lines = contour
 plt.xlabel('$k_x$ ($A^{-1}$)')
@@ -31,7 +34,7 @@ plt.title('Contour Plot of Energy')
 #     ax.plot_trisurf(kx, ky, energy, cmap='viridis', edgecolor='none', alpha=0.7, label=f'Column {i+4}')
 # ax.view_init(elev=30, azim=135)
 ax_slider = plt.axes([0.2, 0.1, 0.6, 0.03])  # Position of slider
-energy_slider = Slider(ax_slider, 'Energy Level', np.min(energy), 0.1, valinit=initial_level)
+energy_slider = Slider(ax_slider, 'Energy Level', np.min(energy), 0.04, valinit=initial_level)
 # Update function
 def update(val):
     # Remove all previous contours

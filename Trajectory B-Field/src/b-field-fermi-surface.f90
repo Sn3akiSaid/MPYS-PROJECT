@@ -1,13 +1,14 @@
-!==============================================================
+!=============================================================
 ! This program perturbs the energy with a magnetic field
 ! and calculates the fermi surface.
-!==============================================================
+!===============================================================
 Program generate_fermi
     use mpi
+   ! #include <mpif.h>
     Implicit None
 !--------Presets
     character(len=80):: prefix="BiTeI"
-    integer,parameter::np=20,npartitions=5!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+    integer,parameter::np=50,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
     
     real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0 !Run again at B_y=0.05-0.06 to see the gap close
 
@@ -28,13 +29,13 @@ Program generate_fermi
             total_pairs,&
             temp_index
     
-    real*8 phase, dx, dy, dz &
+    real*8 phase, dx, dy, dz,&
            twopi,jk,a,b,a1,b1,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
            spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
            alpha,ef(npartitions),gap(npartitions),&
            write_values(11:14),&
-           bvec(3,3),avec(3,3),rvecs(3)&
+           bvec(3,3),avec(3,3),rvecs(3),&
            ktemp1(3),ktemp2(3),&
            kxtemp1(3),kxtemp2(3),&
            kytemp1(3),kytemp2(3),&
@@ -61,9 +62,9 @@ Program generate_fermi
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: x_min = -0.1d0, x_max = 0.1d0,&
-                         y_min = -0.1d0, y_max = 0.1d0,&
-                         z_min = 0.41d0, z_max = 0.59d0
+    real*8, parameter :: x_min = -0.07d0, x_max = 0.07d0,&
+                         y_min = -0.07d0, y_max = 0.07d0,&
+                         z_min = -0.035d0, z_max = 0.035d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -123,7 +124,7 @@ call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
   allocate(rvec(3,nr))
   allocate(Hk(nb,nb),Hamr_trivial(nb,nb,nr),&
            Hamr_topological(nb,nb,nr),Hk_topological(nb,nb),&
-           H(nb,nb),&
+           H(nb,nb), Hk_trivial(nb,nb),&
            ndeg(nr),ene(nb,(np+1)**3),enep(nb,(np+1)**3))
 
 ! Only rank 0 reads the Hamiltonian data
@@ -138,18 +139,18 @@ call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
            read(99,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a,b
            hamr_trivial(i1,i2,k)=dcmplx(a,b)
            read(97,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a1,b1
-           hamr_topological(i1,i2,k)=dcmplx(a,b)
-        enddo
-     enddo
+           hamr_topological(i1,i2,k)=dcmplx(a1,b1)
+        end do
+     end do
      rvec(:,k) = rvecs(1)*avec(:,1) + rvecs(2)*avec(:,2) + rvecs(3)*avec(:,3)
-  enddo
+  end do
 endif
 
 ! Broadcast the read data to all processes
 call MPI_BCAST(ndeg, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 call MPI_BCAST(rvec, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(hamr_trivial, nb*nb*nr*2, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(hamr_topological, nb*nb*nr*2, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
 !------ LAPACK-related array allocations
 lwork=max(1,2*nb-1)
 allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
@@ -164,16 +165,16 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
     dx = (x_max - x_min)/np
     dy = (y_max - y_min)/np
     dz = (z_max - z_min)/np
-
+    
+    j=0
     do i = 0, np
         do n = 0, np
             do k = 0, np
-                j = i*(np+1)*(np+1) + n*(np+1) + k + 1  ! Direct index calculation
-                
+                j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                mesh(1, j) = (x_min + i * dx )* bvec(1,1)
-                mesh(2, j) = (y_min + n * dy )* (bvec(1,2)+bvec(2,2))
-                mesh(3, j) = (z_min + k * dz )* bvec(3,3)
+                mesh(1, j) = (x_min + i * dx )!* bvec(1,1)
+                mesh(2, j) = (y_min + n * dy )!* (bvec(1,2)+bvec(2,2))
+                mesh(3, j) = (z_min + k * dz )! + 0.5*bvec(3,3)
             end do
         end do
     end do
@@ -181,12 +182,13 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
     allocate(Hm(2,2),Hmag(nb,nb))
     Hm = B_x*sigx + B_y*sigy + B_z*sigz
 !------ Turn Hm into an 18x18 to match Hk      
+    Hmag = (0d0, 0d0)
     do i=1, nb/2
           Hmag(i,i)=Hm(1,1)
           Hmag(i,i+nb/2)=Hm(1,2)
           Hmag(i+nb/2,i)=Hm(2,1)
           Hmag(i+nb/2,i+nb/2)=Hm(2,2)
-    enddo
+    end do
 !------ Fourrier transform H(R) to H(k)
     allocate(phases(nr, (np+1)**3))
 
@@ -203,16 +205,16 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
         if (rank == 0) then
             write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
         endif
-       alpha=float(ipart-1)/float(npartitions-1)
-       !alpha=0d0
+       !alpha=float(ipart-1)/float(npartitions-1)
+       alpha=0.789473712
        ! Initialize Hamiltonians for the current partition
        ene=0d0
 
        do k=1,(np+1)**3
         do j=1,nr
           phases(j,k)=dot_product(mesh(:,k),rvec(:,j))
-        enddo
-       enddo
+        end do
+       end do
           ! Fourier transform terms
            !I AM CURRENTLY OPTIMIZING STUFF
              ! Compute phase factors
@@ -227,16 +229,20 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
             Hk_trivial = Hk_trivial + Hamr_trivial(:,:,j) * phase_factor
             Hk_topological = Hk_topological + Hamr_topological(:,:,j) * phase_factor
                 
-          enddo
+          end do
 !----------Interpolate between the trivial and topological states 
-          Hk=HK_trivial*(1-alpha)+Hk_topological*alpha
+          Hk=Hk_trivial*(1-alpha)+Hk_topological*alpha
 !----------Perturb Hamiltonian
-          H = HK+Hmag
+          H = Hk+Hmag
        !enddo
 !----------Compute eigenvalues and eigenvectors
           call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
-          !call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
-    enddo      !Close k-loop 
+          call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+          if (info /= 0) then
+            if (rank == 0) write(*,*) "ZHEEV failed with info =", info
+            call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
+        endif
+    end do      !Close k-loop 
 !------calcualte gap and Fermi level
        gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
        ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
@@ -244,13 +250,13 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
 !------Export data
            ! Only rank 0 writes output files
     if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
-       !write(partnumber,'(i5)') ipart
-       write(line,'(3a)') 'k_surface_fermi_energies_By_0.01_TEST.dat' 
+       write(partnumber,'(i5)') ipart
+       write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_part_',trim(adjustl(partnumber)),'.dat' 
        open(100,file=trim(line))
         
           do k=1,(np+1)**3
                 write(100, '(6(x,f12.6))') mesh(1:3,k), enep(13,k), ene(13,k)!, ef(ipart)
-          enddo
+          end do
             write(100,*)
             write(100,*)
             close(100)
@@ -274,7 +280,7 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
        if (rank == 0) then
         print '(A, I3, A, F6.2)', "Partition ", ipart, " runtime (minutes): ", part_time2
        endif
-    enddo
+    end do
 
     ! Gather results from all processes to rank 0
 if (rank == 0) then

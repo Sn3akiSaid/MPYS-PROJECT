@@ -3,14 +3,20 @@
 ! topological phases of BiTeI.
 !==============================================================
 Program interpolate_topology
-      Implicit None
-!--------Presets
-      character(len=80):: prefix="BiTeI"
-      integer,parameter::nkpath=3,np=200,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-      
-      real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0
+      use mpi
+      ! #include <mpif.h>
+       Implicit None
+   !--------Presets
+       character(len=80):: prefix="BiTeI"
+       integer,parameter::np=100,npartitions=20!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+       
+       real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0 !Run again at B_y=0.05-0.06 to see the gap close
+   
+   !---------MPI variables
+       integer :: ierr, nprocs, rank, local_start, local_end, local_count
+       real*8 :: mpi_start_time, mpi_end_time
 !---------Variable allocation
-      character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
+      !character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
       character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
 
       integer ik, ipart, ib, is,&
@@ -19,17 +25,17 @@ Program interpolate_topology
               i1,i2,&
               lwork,info&
               ,o,p,j1,j2,&
-              total_pairs
+              total_pairs,&
+              temp_index
 
-      real*8 phase_trivial,phase_topological,&
+      real*8 phase, dx, dy, dz,&
              twopi,jk,a,b,a1,b1,&
              spin_x(1,1),spin_y(1,1),spin_z(1,1),&
              spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
              alpha,ef(npartitions),gap(npartitions),&
-             write_values(13:14),&
-             bvec(3,3),avec(3,3),&
+             write_values(11:14),&
+             bvec(3,3),avec(3,3),rvecs(3),&
              ktemp1(3),ktemp2(3),&
-             xkl(nkpath),ykl(nkpath),&
              kxtemp1(3),kxtemp2(3),&
              kytemp1(3),kytemp2(3),&
              kmesh(np,np),&
@@ -38,25 +44,43 @@ Program interpolate_topology
              part_time,part_time2
 
       complex*16 sigx(2, 2), sigy(2, 2), sigz(2, 2),&
-                 chi(2,1),chip(2,1),&
-                 phi(3)
+              chi(2,1),chip(2,1),&
+              phi(3),phase_factor
 
-      real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
-      !real*8,parameter::third=1d0/3d0
-      integer,allocatable:: ndeg_trivial(:),ndeg_topological(:)
-      real*8,allocatable:: rvec_trivial(:,:),rvec_topological(:,:),&
-                           ene(:,:),enep(:,:),&
-                           rwork(:),rvec(:,:),&
-                           spin(:,:,:),spinp(:,:,:)
-                           
-      complex*16,allocatable:: H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:),&
-                               HK_trivial(:,:), HK_topological(:,:),&
-                               Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
-                               work(:)
-      real*8, parameter :: x_min = -0.2, x_max = 0.2, y_min = -0.2, y_max = 0.2
-      real*8, dimension(:), allocatable :: x_vals, y_vals
-      real*8, dimension(:,:), allocatable :: mesh
+  real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
+  
+  integer,allocatable:: ndeg(:),ndeg_topological(:)
+
+  real*8,allocatable:: phases(:,:),rvec_trivial(:,:),rvec_topological(:,:),&
+                       ene(:,:),enep(:,:),&
+                       rwork(:),rvec(:,:),&
+                       spin(:,:,:),spinp(:,:,:)
+                       
+  complex*16,allocatable:: H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:),&
+                           HK_trivial(:,:), HK_topological(:,:),&
+                           Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
+                           work(:)
+      real*8, parameter :: x_min = 0d0, x_max = 0.1,&
+                           y_min = 0d0, y_max = 0.1
+    integer, dimension(:), allocatable:: indices
+
+    real*8, dimension(:,:), allocatable :: mesh
       !complex*16,dimension(2,2) :: sigx(2,2),sigy(2,2),sigz(2,2)
+
+!--------- Initialize MPI environment
+    call MPI_INIT(ierr)
+    call MPI_COMM_SIZE(MPI_COMM_WORLD, nprocs, ierr)
+    call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
+    
+    ! Start timing
+    call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+    mpi_start_time = MPI_WTIME()
+    
+    ! Only rank 0 prints informational messages
+    if (rank == 0) then
+        write(*,*) "Starting calculations with ", nprocs, " MPI processes"
+    endif
+
 !------------------------------------------------------
     write(hamil_file_trivial,'(a,a)')trim(adjustl(prefix)), "_hr_trivial.dat"!Why were these (a,a,a)?
     write(hamil_file_topological,'(a,a)')trim(adjustl(prefix)), "_hr_topological.dat"
@@ -68,6 +92,8 @@ Program interpolate_topology
     data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
     data sigz /(1d0,0d0),(0d0,0d0),(0d0, 0d0),(-1d0, 0d0)/
 
+! Only process 0 reads the input files
+    if (rank == 0) then
 !---------------  Read the vectors
       open(98,file=trim(adjustl(nnkp)),err=333)
 111   read(98,'(a)')line
@@ -77,60 +103,49 @@ Program interpolate_topology
       read(98,'(a)')line
       read(98,'(a)')line
       read(98,*)bvec
-!------- Generate x and y values
-    allocate(x_vals(np+1), y_vals(np+1))
-    do i=0,np
-    	x_vals(i+1) = x_min + i * (x_max - x_min)/np
-    	y_vals(i+1) = y_min + i * (y_max - y_min)/np
-    enddo
-!-------- Calculate the total number of pairs
-    allocate(mesh(3, (np+1)**2))
-!----- Loop through all x values and all y values
-!----- Store the pairs in the result array
-    j = 1
-    do i = 1, np+1
-        do n = 1, np+1
-            mesh(1, j) = x_vals(i)*bvec(1,1)
-            mesh(2, j) = y_vals(n)*(bvec(1,2)+bvec(2,2))
-            mesh(3, j) = 0.5d0 *bvec(3,3) ! Exactly on the BZ boundary
-            j = j + 1
-        end do
-    end do
+
 !------read trivial H(R)
     open(99,file=trim(adjustl(hamil_file_trivial)),err=444)
+    open(97,file=trim(adjustl(hamil_file_topological)),err=445)
     read(99,*)
     read(99,*)nb,nr
+    endif
+    ! Broadcast necessary values to all processes
+  call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+  call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+  call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+  call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+  
     allocate(rvec(3,nr))
-    allocate(rvec_trivial(3,nr),Hk_trivial(nb,nb),Hamr_trivial(nb,nb,nr),&
-             ndeg_trivial(nr),ene(nb,(np+1)**2),enep(nb,(np+1)**2))
-    read(99,*)ndeg_trivial
+    allocate(Hk(nb,nb),Hamr_trivial(nb,nb,nr),&
+             Hamr_topological(nb,nb,nr),Hk_topological(nb,nb),&
+             H(nb,nb), Hk_trivial(nb,nb),&
+             ndeg(nr),ene(nb,(np+1)**2),enep(nb,(np+1)**2))
+  
+  ! Only rank 0 reads the Hamiltonian data
+             if (rank == 0) then
+    read(99,*)ndeg
+    do i = 1, 80
+      read(97,*)
+    end do
     do k=1,nr
        do i=1,nb
           do j=1,nb
-             read(99,*)rvec_trivial(1,k),rvec_trivial(2,k),rvec_trivial(3,k),i1,i2,a,b
+             read(99,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a,b
              hamr_trivial(i1,i2,k)=dcmplx(a,b)
-          enddo
-       enddo
-    enddo
-    close(99)
+             read(97,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a1,b1
+             hamr_topological(i1,i2,k)=dcmplx(a1,b1)
+          end do
+       end do
+       rvec(:,k) = rvecs(1)*avec(:,1) + rvecs(2)*avec(:,2) + rvecs(3)*avec(:,3)
+    end do
+  endif
 
-!------read topolgical H(R)
-    open(99,file=trim(adjustl(hamil_file_topological)),err=445)
-    read(99,*)
-    read(99,*)nb,nr
-    allocate(rvec_topological(3,nr),Hk_topological(nb,nb),Hamr_topological(nb,nb,nr), &
-           ndeg_topological(nr),HK(nb,nb),H(nb,nb))
-    read(99,*)ndeg_topological
-    do k=1,nr
-       do i=1,nb
-          do j=1,nb
-             read(99,*)rvec_topological(1,k),rvec_topological(2,k),rvec_topological(3,k),i1,i2,a,b
-             hamr_topological(i1,i2,k)=dcmplx(a,b)
-          enddo
-       enddo
-       rvec(:,k) = rvec_topological(1,k)*avec(:,1) + rvec_topological(2,k)*avec(:,2) + rvec_topological(3,k)*avec(:,3)
-    enddo
-    close(99)
+! Broadcast the read data to all processes
+call MPI_BCAST(ndeg, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+call MPI_BCAST(rvec, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
 !------ LAPACK-related array allocations
       lwork=max(1,2*nb-1)
       allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
@@ -138,62 +153,94 @@ Program interpolate_topology
       allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
 !------ open gap file
       open(777,file='gap.dat')
-!------ Magnetic Field
-      allocate(Hm(2,2),Hmag(18,18))
-      Hm = B_x*sigx + B_y*sigy + B_z*sigz
+
+!-------- Calculate the total number of pairs
+      allocate(mesh(3, (np+1)**2))
+      !----- Loop through all x values and all y values
+      !----- Store the pairs in the result array
+      !-------Generate Mesh
       
+          dx = (x_max - x_min)/np
+          dy = (y_max - y_min)/np
+         ! dz = (z_max - z_min)/np
+          
+          j=0
+          do i = 0, np
+              do n = 0, np
+                      ! Calculate coordinates directly
+                      j = j + 1
+                      mesh(1, j) = (x_min + i * dx )* bvec(1,1)
+                      mesh(2, j) = (y_min + n * dy )* (bvec(1,2)+bvec(2,2))
+                      mesh(3, j) = 0.5d0 *bvec(3,3)! Exactly on the BZ boundary
+                  
+              end do
+          end do
+
+!------ Magnetic Field
+      allocate(Hm(2,2),Hmag(nb,nb))
+      Hm = B_x*sigx + B_y*sigy + B_z*sigz
+!------ Turn Hm into an 18x18 to match Hk      
+      Hmag = (0d0, 0d0)
       do i=1, nb/2
             Hmag(i,i)=Hm(1,1)
             Hmag(i,i+nb/2)=Hm(1,2)
             Hmag(i+nb/2,i)=Hm(2,1)
             Hmag(i+nb/2,i+nb/2)=Hm(2,2)
-      enddo
+      end do
 !------ Fourrier transform H(R) to H(k)
-      ene=0d0
-      do ipart=1,npartitions
-         write(*,'(a,i5)') 'Partition=',ipart
-         !alpha=float(ipart-1)/float(npartitions-1)
-         alpha=0d0
+      allocate(phases(nr, (np+1)**2))
+
+      local_count = npartitions / nprocs
+      local_start = rank * local_count + 1
+      local_end = (rank + 1) * local_count
+      
+      if (rank == nprocs - 1) then
+          local_end = npartitions  ! Last process takes any remainder
+      end if
+      
+      ! Each process handles its own partitions
+      do ipart = local_start, local_end
+          if (rank == 0) then
+              write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
+          endif
+         alpha=float(ipart-1)/float(npartitions-1)
+         !alpha=0d0
          ! Initialize Hamiltonians for the current partition
+         ene=0d0
+  
          do k=1,(np+1)**2
-                HK_trivial=(0d0,0d0)
-            HK_topological=(0d0,0d0)
-
+          do j=1,nr
+            phases(j,k)=dot_product(mesh(:,k),rvec(:,j))
+          end do
+         end do
             ! Fourier transform terms
-            do j=1,nr
-   
-                   phase_trivial=0.0d0
-               phase_topological=0.0d0
-   
+             !I AM CURRENTLY OPTIMIZING STUFF
                ! Compute phase factors
-               do i=1,3
-                      phase_trivial=phase_trivial    +mesh(i,k)*rvec(i,j)
-                  phase_topological=phase_topological+mesh(i,k)*rvec(i,j)
-                  
-               enddo
-
+         do k=1,(np+1)**2
+            HK_trivial=(0d0,0d0)
+            HK_topological=(0d0,0d0)
+  
+            do j=1,nr
+              phase = phases(j,k)
+              phase_factor = dcmplx(cos(phase), -sin(phase))/float(ndeg(j))
                ! Sum over H(R) contributions for each Hamiltonian
-               do i1=1,nb
-                  do i2=1,nb
-                      Hk_trivial(i1,i2)=Hk_trivial(i1,i2)+Hamr_trivial(i1,i2,j)* &
-                                        dcmplx(cos(phase_trivial), &
-                                              -sin(phase_trivial))/float(ndeg_trivial(j))
-
-                     Hk_topological(i1,i2)=Hk_topological(i1,i2)+Hamr_topological(i1,i2,j)* &
-                                          dcmplx(cos(phase_topological), &
-                                                -sin(phase_topological))/float(ndeg_topological(j))
-                  enddo
-               enddo
-            enddo
-!----------Interpolate between the trivial and topological states 
-            Hk=alpha*HK_trivial+(1d0-alpha)*HK_topological
-!----------Perturb Hamiltonian
-            H = HK+Hmag
+              Hk_trivial = Hk_trivial + Hamr_trivial(:,:,j) * phase_factor
+              Hk_topological = Hk_topological + Hamr_topological(:,:,j) * phase_factor
+                  
+            end do
+  !----------Interpolate between the trivial and topological states 
+            Hk=Hk_trivial*(1-alpha)+Hk_topological*alpha
+  !----------Perturb Hamiltonian
+            H = Hk+Hmag
          !enddo
-!----------Compute eigenvalues and eigenvectors
+  !----------Compute eigenvalues and eigenvectors
             call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
             call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
-      enddo      !Close k-loop
+            if (info /= 0) then
+              if (rank == 0) write(*,*) "ZHEEV failed with info =", info
+              call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
+          endif
+      end do      !Close k-loop 
             
 !----------Find spins by applying pauli             
            ! do ib=1,nb
@@ -222,50 +269,98 @@ Program interpolate_topology
 
          
 !------calcualte gap and Fermi level
-         gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
+         gap(ipart)= minval(enep(13,:))-maxval(enep(12,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
 !------Export data
-         write(partnumber,'(i5)') ipart
-         write(line,'(3a)') 'Energy_part_0.2B',trim(adjustl(partnumber)),'.dat' 
-         open(100,file=trim(line))
-         open(200,file='energy.dat')
-
+           ! Only rank 0 writes output files
+      if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
+          write(partnumber,'(i5)') ipart
+          write(line,'(3a)') 'k_surface_fermi_energies_By_0.01_part_',trim(adjustl(partnumber)),'.dat' 
+          open(100,file=trim(line))
+             
             do k=1,(np+1)**2
-                 ! write_values(13:14) = 0.0  ! Assuming i ranges from 11 to 14
-                 ! do i = 13,14
-                      ! Check if ene(i,k) - ef(ipart) is less than 0.01 and set it to 0 if true
-                     ! if (abs(ene(i,k)-minval(ene(i,:))) .lt. 0.001) then
-                     !     write_values(i) = 0.0
-                     ! else
-                     !     write_values(i) = ene(i,k)-minval(ene(i,:))
-                     ! end if
-                 ! enddo
-                 ! write(*,*) 'Debug: ene(13,k) - ef(ipart) for k = ', k, ' = ', ene(13,k) - ef(ipart)
                   write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-ef(ipart), i=11,14)!,&
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)
-            enddo
-              write(100,*)
-              write(100,*)
-             ! write(200,*)
-             ! write(200,*)
-      
-        
-         close(100)
+            end do
+            write(100,*)
+            write(100,*)
+            close(100)
+      endif
        
-!------- Export Gap and Fermi energy
-        ! write(777,'(3(x,f12.6))') alpha,gap(ipart),ef(ipart) !this had ipart in front of alpha
-         call cpu_time(part_time)
-         part_time2 = part_time/60
-         print'(A, F6.2)', "Total runtime (minutes): ", part_time2
-      enddo
+!------- Check time taken to calculate
+
+      call cpu_time(part_time)
+      part_time2 = part_time/60
+      if (rank == 0) then
+       print '(A, I3, A, F6.2)', "Partition ", ipart, " runtime (minutes): ", part_time2
+      endif
+   end do
+
+   ! Gather results from all processes to rank 0
+if (rank == 0) then
+   ! We already have results for our local partitions
+   ! Receive results from other processes
+   do i = 1, nprocs-1
+       local_start = i * local_count + 1
+       local_end = (i + 1) * local_count
+       if (i == nprocs - 1) then
+           local_end = npartitions
+       end if
+       local_count = local_end - local_start + 1
+       
+       if (local_count > 0) then
+           call MPI_RECV(gap(local_start), local_count, MPI_DOUBLE_PRECISION, i, 0, &
+                        MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
+           call MPI_RECV(ef(local_start), local_count, MPI_DOUBLE_PRECISION, i, 1, &
+                        MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
+       endif
+   end do
+   
+   ! Write out the gap data for all partitions
+   open(777, file='gap.dat')
+   do ipart = 1, npartitions
+       write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap(ipart)
+   end do
+   close(777)
+   
+   ! Find the critical alpha with minimum gap
+   temp_index = minloc(gap, dim=1)
+   write(*,*) "Critical alpha with minimum gap: ", float(temp_index-1)/float(npartitions-1)
+   write(*,*) "Minimum gap value: ", gap(temp_index)
+   
+else
+   ! Send results to master process
+   call MPI_SEND(gap(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
+                0, 0, MPI_COMM_WORLD, ierr)
+   call MPI_SEND(ef(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
+                0, 1, MPI_COMM_WORLD, ierr)
+endif
+
+! Measure total runtime
+call MPI_BARRIER(MPI_COMM_WORLD, ierr)
+mpi_end_time = MPI_WTIME()
+
+if (rank == 0) then
+   write(*,'(A, F10.4, A)') "Total MPI runtime: ", (mpi_end_time - mpi_start_time) / 60.0, " minutes"
+endif
+
+! Finalize MPI
+call MPI_FINALIZE(ierr)
+
+! Skip error handling in non-root processes
+if (rank /= 0) then
+   goto 999
+endif
 !-------Errors
 333   write(*,'(3a)')'ERROR: input file "',trim(adjustl(nnkp)),'" not found'
-      stop
+   stop
 444   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_trivial)),'" not found'
-      stop
+   stop
 445   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_topological)),'" not found'
-      stop      
+   stop      
+
+999 continue 
 !---------END
 end program interpolate_topology

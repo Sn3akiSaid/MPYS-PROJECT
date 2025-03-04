@@ -8,9 +8,10 @@ Program generate_fermi
     Implicit None
 !--------Presets
     character(len=80):: prefix="BiTeI"
-    integer,parameter::np=50,npartitions=1!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+    integer,parameter::np=50,npartitions=10!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
     
-    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0 !Run again at B_y=0.05-0.06 to see the gap close
+    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0,& !Run again at B_y=0.05-0.06 to see the gap close
+                      alpha_min = 0.78d0, alpha_max = 0.79d0
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -33,7 +34,8 @@ Program generate_fermi
            twopi,jk,a,b,a1,b1,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
            spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
-           alpha,ef(npartitions),gap(npartitions),&
+           alpha,ef(npartitions),efp(npartitions),&
+           gap(npartitions),gap_perturbed(npartitions),gap_unperturbed(npartitions),&
            write_values(11:14),&
            bvec(3,3),avec(3,3),rvecs(3),&
            ktemp1(3),ktemp2(3),&
@@ -43,6 +45,7 @@ Program generate_fermi
            mesh_kx(3,np, np), mesh_ky(3,np, np),&
            mesh_gap(3, np**2),&
            part_time,part_time2
+
 
     complex*16 sigx(2, 2), sigy(2, 2), sigz(2, 2),&
                chi(2,1),chip(2,1),&
@@ -64,7 +67,7 @@ Program generate_fermi
 
     real*8, parameter :: x_min = -0.07d0, x_max = 0.07d0,&
                          y_min = -0.07d0, y_max = 0.07d0,&
-                         z_min = -0.035d0, z_max = 0.035d0
+                         z_min = -0.02d0, z_max = 0.02d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -201,12 +204,14 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
     end if
     
     ! Each process handles its own partitions
+    ! alpha=0.789473712
+
     do ipart = local_start, local_end
         if (rank == 0) then
             write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
         endif
        !alpha=float(ipart-1)/float(npartitions-1)
-       alpha=0.789473712
+        alpha = alpha_min + dble(ipart - 1)*(alpha_max - alpha_min)/dble(npartitions - 1)
        ! Initialize Hamiltonians for the current partition
        ene=0d0
 
@@ -237,41 +242,43 @@ allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
        !enddo
 !----------Compute eigenvalues and eigenvectors
           call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
-          call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
+        !   call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
           if (info /= 0) then
             if (rank == 0) write(*,*) "ZHEEV failed with info =", info
             call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
         endif
     end do      !Close k-loop 
 !------calcualte gap and Fermi level
-       gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
+       gap_unperturbed(ipart)=minval(ene(13,:))-maxval(ene(12,:))
        ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
-
+    !    efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
+    !    gap_perturbed(ipart)=minval(enep(13,:))-maxval(enep(12,:))
 !------Export data
            ! Only rank 0 writes output files
-    if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
+    if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_unperturbed(ipart) < 0.08d0) then
        write(partnumber,'(i5)') ipart
-       write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_part_',trim(adjustl(partnumber)),'.dat' 
+       write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_trajectory.dat' 
        open(100,file=trim(line))
         
           do k=1,(np+1)**3
-                write(100, '(6(x,f12.6))') mesh(1:3,k), enep(13,k), ene(13,k)!, ef(ipart)
+                write(100, '(5(x,f12.6))') mesh(1:3,k), ene(12:13,k)- ef(ipart)
           end do
             write(100,*)
             write(100,*)
             close(100)
     endif
-    !    write(line,'(3a)') 'perturbed_fermi_energies.dat' 
-    !    open(200,file=trim(line))
-        
-    !       do k=1,(np+1)**3
-    !         !if (enep(13,k).eq.ef(ipart)) then
-    !             write(200, '(5(x,f12.6))') mesh(1:3,k),enep(13,k)-ef
-    !         !endif
-    !       enddo
-    !         write(200,*)
-    !         write(200,*)
-    !    close(200)
+    ! if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_perturbed(ipart) < 0.08) then
+    !     write(partnumber,'(i5)') ipart
+    !     write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_perturbed.dat' 
+    !     open(200,file=trim(line))
+         
+    !        do k=1,(np+1)**3
+    !              write(200, '(7(x,f12.6))') mesh(1:3,k), enep(12:13,k)!, ef(ipart)
+    !        end do
+    !          write(200,*)
+    !          write(200,*)
+    !          close(200)
+    !  endif
      
 !------- Check time taken to calculate
 
@@ -295,7 +302,7 @@ if (rank == 0) then
         local_count = local_end - local_start + 1
         
         if (local_count > 0) then
-            call MPI_RECV(gap(local_start), local_count, MPI_DOUBLE_PRECISION, i, 0, &
+            call MPI_RECV(gap_unperturbed(local_start), local_count, MPI_DOUBLE_PRECISION, i, 0, &
                          MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
             call MPI_RECV(ef(local_start), local_count, MPI_DOUBLE_PRECISION, i, 1, &
                          MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
@@ -305,14 +312,14 @@ if (rank == 0) then
     ! Write out the gap data for all partitions
     open(777, file='gap.dat')
     do ipart = 1, npartitions
-        write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap(ipart)
+        write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap_unperturbed(ipart)
     end do
     close(777)
     
     ! Find the critical alpha with minimum gap
-    temp_index = minloc(gap, dim=1)
+    temp_index = minloc(gap_unperturbed, dim=1)
     write(*,*) "Critical alpha with minimum gap: ", float(temp_index-1)/float(npartitions-1)
-    write(*,*) "Minimum gap value: ", gap(temp_index)
+    write(*,*) "Minimum gap value: ", gap_unperturbed(temp_index)
     
 else
     ! Send results to master process

@@ -6,7 +6,7 @@ module reading_module
   private
   
   ! Public interfaces
-  public :: read_optimized_hamiltonians, read_general_hamiltonians
+  public :: read_optimized_hamiltonians, read_general_hamiltonians, read_header
   
 contains
   !--------------------------------------------------------------------
@@ -30,9 +30,8 @@ contains
       ! Open the trivial and topological files
       open(newunit=unit_trivial, file=trim(hamil_file_trivial), status='old', action='read')
       open(newunit=unit_topological, file=trim(hamil_file_topological), status='old', action='read')
-      
-      ! Read header information and dimensions
       read(unit_trivial, *) ndeg
+      ! skip header information and dimensions
       do i = 1, 80
           read(unit_trivial, *)
       end do
@@ -57,7 +56,7 @@ contains
   !--------------------------------------------------------------------
   ! Subroutine to read general Hamiltonians (4x4 case)
   subroutine read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
-                                      Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg, avec)
+                                      Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg_trivial, ndeg_topological,  avec)
       implicit none
       ! Inputs:
       character(len=*), intent(in) :: hamil_file_trivial, hamil_file_topological
@@ -66,7 +65,7 @@ contains
       ! Outputs:
       complex*16, intent(out) :: Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr)
       real*8, intent(out) :: rvec_trivial(3, nr), rvec_topological(3, nr)
-      integer, intent(out) :: ndeg(nr)
+      integer, intent(out) :: ndeg_trivial(nr),ndeg_topological(nr)
       ! Local variables:
       integer :: i, j, k, i1, i2
       real*8 :: a, b, a1, b1
@@ -76,37 +75,48 @@ contains
       ! Open files
       open(newunit=unit_trivial, file=trim(hamil_file_trivial), status='old', action='read')
       open(newunit=unit_topological, file=trim(hamil_file_topological), status='old', action='read')
+      read(unit_topological, *)    ! Skip line 1 ("written on 5Nov2024 at 13:56:48")
+      read(unit_topological, *)    ! Skip line 2 (nb)
+      read(unit_topological, *)    ! Skip line 3 (nr)
       
-      ! Read header information
-      read(unit_trivial, *) ndeg
-      read(unit_topological, *) ! Skip header - ndeg is already read from trivial file
-      
-      do i = 1, 79
-          read(unit_topological, *)
-      end do
-      
-      do i = 1, 80
-          read(unit_trivial, *)
-      end do
-      
+      ! Similarly for the trivial file:
+      read(unit_trivial, *)        ! Skip line 1
+      read(unit_trivial, *)        ! Skip line 2
+      read(unit_trivial, *)        ! Skip line 3
+      read(unit_topological, *) ndeg_topological
+      read(unit_trivial, *) ndeg_trivial
       do k = 1, nr
           do i = 1, nb
               do j = 1, nb
-                  read(unit_trivial, *) rvecs_trivial(1:3), i1, i2, a, b
+                  read(unit_trivial, *) rvecs_trivial(1),rvecs_trivial(2),rvecs_trivial(3), i1, i2, a, b
                   Hamr_trivial(i1, i2, k) = dcmplx(a, b)
                   
-                  read(unit_topological, *) rvecs_topological(1:3), i1, i2, a1, b1
+                  read(unit_topological, *) rvecs_topological(1),rvecs_topological(2),rvecs_topological(3), i1, i2, a1, b1
                   Hamr_topological(i1, i2, k) = dcmplx(a1, b1)
               end do
           end do
           
           ! Store the vectors
-          rvec_trivial(:,k) = rvecs_trivial
-          rvec_topological(:,k) = rvecs_topological
+          rvec_trivial(:,k) = rvecs_trivial(1)*avec(:,1) + rvecs_trivial(2)*avec(:,2) + rvecs_trivial(3)*avec(:,3)
+          rvec_topological(:,k) = rvecs_topological(1)*avec(:,1) + rvecs_topological(2)*avec(:,2) + rvecs_topological(3)*avec(:,3)
       end do
       
       close(unit_trivial)
       close(unit_topological)
   end subroutine read_general_hamiltonians
   
+  subroutine read_header(hamil_file,nb,nr)
+    implicit none
+    character(len=*), intent(in) :: hamil_file
+    integer, intent(out) :: nb,nr
+    integer :: unit, i
+
+    open(newunit=unit, file=trim(hamil_file), status='old', action='read')
+
+    read(unit, *)
+    read(unit, *) nb
+    read(unit, *) nr
+    close(unit)
+  end subroutine read_header
+
 end module reading_module

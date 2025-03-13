@@ -28,7 +28,7 @@ program interpolate_topology
     real*8 :: phase, dx, dy, dz, twopi, jk, a, b, a1, b1, &
               spin_x(1,1), spin_y(1,1), spin_z(1,1), &
               spin_xp(1,1), spin_yp(1,1), spin_zp(1,1), &
-              alpha, ef(npartitions), gap(npartitions), &
+              alpha, ef(npartitions), gap(npartitions),efp(npartitions), &
               gapp(npartitions), &
               write_values(11:14), &
               bvec(3,3), avec(3,3), rvecs(3), &
@@ -47,7 +47,7 @@ program interpolate_topology
     real*8, dimension(npartitions) :: min_eigenvalue, alpha_values
     
     ! Allocatable arrays
-    integer, allocatable :: ndeg(:)
+    integer, allocatable :: ndeg(:),ndeg_trivial(:),ndeg_topological(:)
     real*8, allocatable :: mesh(:,:), phases(:,:), rvec_trivial(:,:), rvec_topological(:,:), &
                            ene(:,:), enep(:,:), rwork(:), rvec(:,:), &
                            spin(:,:,:), spinp(:,:,:)
@@ -56,8 +56,8 @@ program interpolate_topology
                               Hamr_trivial(:,:,:), Hamr_topological(:,:,:), &
                               work(:)
     
-    real*8, parameter :: x_min = 0d0, x_max = 0.1d0, &
-                         y_min = 0d0, y_max = 0.1d0
+    real*8, parameter :: x_min = -0.1d0, x_max = 0.1d0, &
+                         y_min = -0.1d0, y_max = 0.1d0
     
     integer, allocatable :: indices(:)
     
@@ -103,26 +103,29 @@ program interpolate_topology
       call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
 
-!------read trivial H(R)
-    open(99,file=trim(adjustl(hamil_file_trivial)),err=444)
-    open(97,file=trim(adjustl(hamil_file_topological)),err=445)
-    read(99,*)
-    read(99,*)nb,nr
+!------read trivial and topological H(R)
+    ! open(99,file=trim(adjustl(hamil_file_trivial)),err=444)
+    ! open(97,file=trim(adjustl(hamil_file_topological)),err=445)
+    ! read(99,*)
+    ! read(97,*)
+    ! read(97,*)!Skip nb,nr same as other file
+    ! read(99,*)nb,nr
+      call read_header(hamil_file_trivial, nb, nr)
+      call read_header(hamil_file_topological, nb, nr)
     endif
     ! Broadcast necessary values to all processes
 
   call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
   call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 
-        allocate(rvec(3, nr))
+        allocate(rvec(3, nr),rvec_trivial(3, nr), rvec_topological(3, nr))
         allocate(Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr))
         allocate(Hk_topological(nb,nb),Hk_trivial(nb,nb))
         allocate(H(nb,nb),Hk(nb,nb))
-        allocate(ndeg(nr))
+        allocate(ndeg(nr),ndeg_trivial(nr),ndeg_topological(nr))
         allocate(enep(nb, (np+1)**dim), ene(nb, (np+1)**dim))
   ! Only rank 0 reads the Hamiltonian data
     if (rank == 0) then
-    read(99,*)ndeg
 
     if (useOptimized) then
         if (rank == 0) then
@@ -132,13 +135,14 @@ program interpolate_topology
         end if
         else
             call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
-                                      Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg, avec)
+            Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg_trivial, ndeg_topological, avec)
         endif
     end if
 
 
 ! Broadcast the read data to all processes
-    call MPI_BCAST(ndeg, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(ndeg_trivial, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(ndeg_topological, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(rvec_trivial, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(rvec_topological, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
@@ -206,7 +210,7 @@ program interpolate_topology
          ! Initialize Hamiltonians for the current partition
          ene=0d0
 !----- FOURIER TRANSFORM 
-         call fourier_transform_general(np, dim, nr, nb, ndeg, mesh, bvec, avec, &
+         call fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
           rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
           Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
 
@@ -242,15 +246,17 @@ program interpolate_topology
          gapp(ipart)= minval(enep(13,:))-maxval(enep(12,:))
          gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
+         efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
+
 !------Export data
            ! Only rank 0 writes output files
       if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
           write(partnumber,'(i5)') ipart
-          write(line,'(3a)') 'k_surface_fermi_energies_By_0.01_part_',trim(adjustl(partnumber)),'.dat' 
+          write(line,'(3a)') 'k_surface_fermi_energies_By_0.05_part_',trim(adjustl(partnumber)),'.dat' 
           open(100,file=trim(line))
              
             do k=1,(np+1)**dim
-                  write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-ef(ipart), i=11,14)!,&
+                  write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-efp(ipart), i=11,14)!,&
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)

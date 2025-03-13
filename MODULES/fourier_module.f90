@@ -84,14 +84,14 @@ contains
   
   !--------------------------------------------------------------------
   ! Subroutine for the general Fourier transform (4x4 case)
-  subroutine fourier_transform_general(np, dim, nr, nb, ndeg, mesh, bvec, avec, &
+  subroutine fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
                                       rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
                                       Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
       implicit none
       ! Inputs:
       integer, intent(in) :: np, dim, nr, nb, lwork, rank
       real*8, intent(in) :: alpha
-      integer, intent(in) :: ndeg(nr)
+      integer, intent(in) :: ndeg_topological(nr),ndeg_trivial(nr)
       real*8, intent(in) :: mesh(3, (np+1)**dim)
       real*8, intent(in) :: bvec(3,3), avec(3,3)
       real*8, intent(in) :: rvec_trivial(3, nr), rvec_topological(3, nr)
@@ -125,15 +125,13 @@ contains
               phase_topological = 0.0d0
               
               do i = 1, size(bvec, 2)
-                  phase_trivial = phase_trivial + dot_product(mesh(:, k)*bvec(:, i), &
-                                                         rvec_trivial(:, j)*avec(:, i))
-                  phase_topological = phase_topological + dot_product(mesh(:, k)*bvec(:, i), &
-                                                             rvec_topological(:, j)*avec(:, i))
+                  phase_trivial = phase_trivial + dot_product(mesh(:, k),rvec_trivial(:, j))
+                  phase_topological = phase_topological + dot_product(mesh(:, k),rvec_topological(:, j))
               end do
               
               ! Convert to complex phase factors
-              phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / dble(ndeg(j))
-              phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / dble(ndeg(j))
+              phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / dble(ndeg_trivial(j))
+              phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / dble(ndeg_topological(j))
               
               ! Add contributions to Hamiltonian
               Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor_trivial

@@ -1,90 +1,86 @@
 !==============================================================
-! This program adibatically interpolates the energy between two
+! This program adiabatically interpolates the energy between two
 ! topological phases of BiTeI.
 !==============================================================
-Program interpolate_topology
-      use mpi
-      ! #include <mpif.h>
-       Implicit None
-   !--------Presets
-       character(len=80):: prefix="BiTeI"
-       integer,parameter::np=100,npartitions=20!Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-       
-       real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0 !Run again at B_y=0.05-0.06 to see the gap close
-   
-   !---------MPI variables
-       integer :: ierr, nprocs, rank, local_start, local_end, local_count
-       real*8 :: mpi_start_time, mpi_end_time
-!---------Variable allocation
-      !character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
-      character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
-
-      integer ik, ipart, ib, is,&
-              i,j,k,&
-              n,nr,nb,&
-              i1,i2,&
-              lwork,info&
-              ,o,p,j1,j2,&
-              total_pairs,&
-              temp_index
-
-      real*8 phase, dx, dy, dz,&
-             twopi,jk,a,b,a1,b1,&
-             spin_x(1,1),spin_y(1,1),spin_z(1,1),&
-             spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
-             alpha,ef(npartitions),gap(npartitions),&
-             write_values(11:14),&
-             bvec(3,3),avec(3,3),rvecs(3),&
-             ktemp1(3),ktemp2(3),&
-             kxtemp1(3),kxtemp2(3),&
-             kytemp1(3),kytemp2(3),&
-             kmesh(np,np),&
-             mesh_kx(3,np, np), mesh_ky(3,np, np),&
-             mesh_gap(3, np**2),&
-             part_time,part_time2
-
-      complex*16 sigx(2, 2), sigy(2, 2), sigz(2, 2),&
-              chi(2,1),chip(2,1),&
-              phi(3),phase_factor
-
-  real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
-  
-  integer,allocatable:: ndeg(:),ndeg_topological(:)
-
-  real*8,allocatable:: phases(:,:),rvec_trivial(:,:),rvec_topological(:,:),&
-                       ene(:,:),enep(:,:),&
-                       rwork(:),rvec(:,:),&
-                       spin(:,:,:),spinp(:,:,:)
-                       
-  complex*16,allocatable:: H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:),&
-                           HK_trivial(:,:), HK_topological(:,:),&
-                           Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
-                           work(:)
-      real*8, parameter :: x_min = 0d0, x_max = 0.1,&
-                           y_min = 0d0, y_max = 0.1
-    integer, dimension(:), allocatable:: indices
-
-    real*8, dimension(:,:), allocatable :: mesh
-      !complex*16,dimension(2,2) :: sigx(2,2),sigy(2,2),sigz(2,2)
+program interpolate_topology
+    use mpi
+    use reading_module
+    use fourier_module
+    implicit none
+    
+    !--------Presets
+    character(len=80):: prefix="BiTeI"
+    integer, parameter :: np=100, npartitions=10, &  ! Adjust these parameters for resolution
+                         dim=2                      ! dimensions in k-space
+    real*8, parameter :: B_x = 0d0, B_y = 0.05d0, B_z = 0d0 ! Magnetic field components
+    
+    !---------MPI variables
+    integer :: ierr, nprocs, rank, local_start, local_end, local_count
+    real*8 :: mpi_start_time, mpi_end_time
+    
+    !---------Variable declarations
+    character(len=80) :: hamil_file_trivial, hamil_file_topological, nnkp, line, partnumber
+    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 4x4/'  ! 4x4 Hamiltonian directory
+    
+    integer :: ik, ipart, ib, is, i, j, k, n, nr, nb, i1, i2, lwork, info, &
+               o, p, j1, j2, total_pairs, temp_index
+    
+    real*8 :: phase, dx, dy, dz, twopi, jk, a, b, a1, b1, &
+              spin_x(1,1), spin_y(1,1), spin_z(1,1), &
+              spin_xp(1,1), spin_yp(1,1), spin_zp(1,1), &
+              alpha, ef(npartitions), gap(npartitions), &
+              gapp(npartitions), &
+              write_values(11:14), &
+              bvec(3,3), avec(3,3), rvecs(3), &
+              ktemp1(3), ktemp2(3), &
+              kxtemp1(3), kxtemp2(3), &
+              kytemp1(3), kytemp2(3), &
+              kmesh(np,np), &
+              mesh_kx(3,np,np), mesh_ky(3,np,np), &
+              mesh_gap(3,np**2), &
+              part_time, part_time2
+    
+    complex*16 :: sigx(2,2), sigy(2,2), sigz(2,2), &
+                 chi(2,1), chip(2,1), &
+                 phi(3), phase_factor
+    
+    real*8, dimension(npartitions) :: min_eigenvalue, alpha_values
+    
+    ! Allocatable arrays
+    integer, allocatable :: ndeg(:)
+    real*8, allocatable :: mesh(:,:), phases(:,:), rvec_trivial(:,:), rvec_topological(:,:), &
+                           ene(:,:), enep(:,:), rwork(:), rvec(:,:), &
+                           spin(:,:,:), spinp(:,:,:)
+    complex*16, allocatable :: H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:), &
+                              HK_trivial(:,:), HK_topological(:,:), &
+                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:), &
+                              work(:)
+    
+    real*8, parameter :: x_min = 0d0, x_max = 0.1d0, &
+                         y_min = 0d0, y_max = 0.1d0
+    
+    integer, allocatable :: indices(:)
+    
+    ! Flags
+    logical :: useOptimized = .false.  ! Set to false for 4x4 case
 
 !--------- Initialize MPI environment
     call MPI_INIT(ierr)
     call MPI_COMM_SIZE(MPI_COMM_WORLD, nprocs, ierr)
     call MPI_COMM_RANK(MPI_COMM_WORLD, rank, ierr)
-    
-    ! Start timing
     call MPI_BARRIER(MPI_COMM_WORLD, ierr)
     mpi_start_time = MPI_WTIME()
-    
     ! Only rank 0 prints informational messages
     if (rank == 0) then
         write(*,*) "Starting calculations with ", nprocs, " MPI processes"
     endif
 
-!------------------------------------------------------
-    write(hamil_file_trivial,'(a,a)')trim(adjustl(prefix)), "_hr_trivial.dat"!Why were these (a,a,a)?
-    write(hamil_file_topological,'(a,a)')trim(adjustl(prefix)), "_hr_topological.dat"
-    write(nnkp,'(a,a)')      trim(adjustl(prefix)),".nnkp"
+
+    ! Modify the file path construction
+    write(hamil_file_trivial,'(2a,a,a)') trim(adjustl(hamil_dir)), trim(adjustl(prefix)), "_hr_trivial.dat"
+    write(hamil_file_topological,'(2a,a,a)') trim(adjustl(hamil_dir)), trim(adjustl(prefix)), "_hr_topological.dat"
+    write(nnkp,'(2a,a,a)') trim(adjustl(hamil_dir)), trim(adjustl(prefix)), ".nnkp"
+
 !-----Define pi
       twopi=4.0d0*atan(1.0d0)*2.0d0
 !--------- Define Pauli Matrices sigma x,y,z
@@ -96,13 +92,16 @@ Program interpolate_topology
     if (rank == 0) then
 !---------------  Read the vectors
       open(98,file=trim(adjustl(nnkp)),err=333)
-111   read(98,'(a)')line
+111   read(98,'(a)', iostat=info)line
       if(trim(adjustl(line)).ne."begin real_lattice") goto 111
       read(98,*)avec
       read(98,'(a)')line
       read(98,'(a)')line
       read(98,'(a)')line
       read(98,*)bvec
+
+      call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+      call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
 
 !------read trivial H(R)
     open(99,file=trim(adjustl(hamil_file_trivial)),err=444)
@@ -111,51 +110,50 @@ Program interpolate_topology
     read(99,*)nb,nr
     endif
     ! Broadcast necessary values to all processes
-  call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-  call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+
   call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
   call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-  
-    allocate(rvec(3,nr))
-    allocate(Hk(nb,nb),Hamr_trivial(nb,nb,nr),&
-             Hamr_topological(nb,nb,nr),Hk_topological(nb,nb),&
-             H(nb,nb), Hk_trivial(nb,nb),&
-             ndeg(nr),ene(nb,(np+1)**2),enep(nb,(np+1)**2))
-  
+
+        allocate(rvec(3, nr))
+        allocate(Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr))
+        allocate(Hk_topological(nb,nb),Hk_trivial(nb,nb))
+        allocate(H(nb,nb),Hk(nb,nb))
+        allocate(ndeg(nr))
+        allocate(enep(nb, (np+1)**dim), ene(nb, (np+1)**dim))
   ! Only rank 0 reads the Hamiltonian data
-             if (rank == 0) then
+    if (rank == 0) then
     read(99,*)ndeg
-    do i = 1, 80
-      read(97,*)
-    end do
-    do k=1,nr
-       do i=1,nb
-          do j=1,nb
-             read(99,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a,b
-             hamr_trivial(i1,i2,k)=dcmplx(a,b)
-             read(97,*)rvecs(1),rvecs(2),rvecs(3),i1,i2,a1,b1
-             hamr_topological(i1,i2,k)=dcmplx(a1,b1)
-          end do
-       end do
-       rvec(:,k) = rvecs(1)*avec(:,1) + rvecs(2)*avec(:,2) + rvecs(3)*avec(:,3)
-    end do
-  endif
+
+    if (useOptimized) then
+        if (rank == 0) then
+            call read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
+            Hamr_trivial, Hamr_topological, rvec, ndeg, avec)
+            rvec_topological = rvec_trivial
+        end if
+        else
+            call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
+                                      Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg, avec)
+        endif
+    end if
+
 
 ! Broadcast the read data to all processes
-call MPI_BCAST(ndeg, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(rvec, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(ndeg, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(rvec_trivial, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(rvec_topological, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
 !------ LAPACK-related array allocations
       lwork=max(1,2*nb-1)
-      allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
+      allocate(work(max(1,lwork)),&
+               rwork(max(1,3*nb-2)))
       !allocate(weightx(nb,(np+1)**2),weighty(nb,(np+1)**2),weightz(nb,(np+1)**2))
-      allocate(spin(3,nb,(np+1)**2),spinp(3,nb,(np+1)**2))
+      allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 !------ open gap file
       open(777,file='gap.dat')
 
 !-------- Calculate the total number of pairs
-      allocate(mesh(3, (np+1)**2))
+      allocate(mesh(3, (np+1)**dim))
       !----- Loop through all x values and all y values
       !----- Store the pairs in the result array
       !-------Generate Mesh
@@ -188,7 +186,7 @@ call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD
             Hmag(i+nb/2,i+nb/2)=Hm(2,2)
       end do
 !------ Fourrier transform H(R) to H(k)
-      allocate(phases(nr, (np+1)**2))
+    !   allocate(phases(nr, (np+1)**dim))
 
       local_count = npartitions / nprocs
       local_start = rank * local_count + 1
@@ -207,40 +205,12 @@ call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD
          !alpha=0d0
          ! Initialize Hamiltonians for the current partition
          ene=0d0
-  
-         do k=1,(np+1)**2
-          do j=1,nr
-            phases(j,k)=dot_product(mesh(:,k),rvec(:,j))
-          end do
-         end do
-            ! Fourier transform terms
-             !I AM CURRENTLY OPTIMIZING STUFF
-               ! Compute phase factors
-         do k=1,(np+1)**2
-            HK_trivial=(0d0,0d0)
-            HK_topological=(0d0,0d0)
-  
-            do j=1,nr
-              phase = phases(j,k)
-              phase_factor = dcmplx(cos(phase), -sin(phase))/float(ndeg(j))
-               ! Sum over H(R) contributions for each Hamiltonian
-              Hk_trivial = Hk_trivial + Hamr_trivial(:,:,j) * phase_factor
-              Hk_topological = Hk_topological + Hamr_topological(:,:,j) * phase_factor
-                  
-            end do
-  !----------Interpolate between the trivial and topological states 
-            Hk=Hk_trivial*(1-alpha)+Hk_topological*alpha
-  !----------Perturb Hamiltonian
-            H = Hk+Hmag
-         !enddo
-  !----------Compute eigenvalues and eigenvectors
-            call zheev('V','U',nb,H,nb,enep(:,k),work,lwork,rwork,info)
-            call zheev('V','U',nb,Hk,nb,ene(:,k),work,lwork,rwork,info)
-            if (info /= 0) then
-              if (rank == 0) write(*,*) "ZHEEV failed with info =", info
-              call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
-          endif
-      end do      !Close k-loop 
+!----- FOURIER TRANSFORM 
+         call fourier_transform_general(np, dim, nr, nb, ndeg, mesh, bvec, avec, &
+          rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
+          Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
+
+!----- END FOURIER TRANSFORM
             
 !----------Find spins by applying pauli             
            ! do ib=1,nb
@@ -269,7 +239,8 @@ call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD
 
          
 !------calcualte gap and Fermi level
-         gap(ipart)= minval(enep(13,:))-maxval(enep(12,:))
+         gapp(ipart)= minval(enep(13,:))-maxval(enep(12,:))
+         gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
 !------Export data
            ! Only rank 0 writes output files
@@ -278,7 +249,7 @@ call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD
           write(line,'(3a)') 'k_surface_fermi_energies_By_0.01_part_',trim(adjustl(partnumber)),'.dat' 
           open(100,file=trim(line))
              
-            do k=1,(np+1)**2
+            do k=1,(np+1)**dim
                   write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-ef(ipart), i=11,14)!,&
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
@@ -293,7 +264,7 @@ call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD
 
       call cpu_time(part_time)
       part_time2 = part_time/60
-      if (rank == 0) then
+      if (rank == 0) then 
        print '(A, I3, A, F6.2)', "Partition ", ipart, " runtime (minutes): ", part_time2
       endif
    end do
@@ -307,7 +278,7 @@ if (rank == 0) then
        local_end = (i + 1) * local_count
        if (i == nprocs - 1) then
            local_end = npartitions
-       end if
+       endif
        local_count = local_end - local_start + 1
        
        if (local_count > 0) then
@@ -321,14 +292,14 @@ if (rank == 0) then
    ! Write out the gap data for all partitions
    open(777, file='gap.dat')
    do ipart = 1, npartitions
-       write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap(ipart)
+       write(777, '(3(x,f12.6))') float(ipart-1)/float(npartitions-1), gap(ipart), gapp(ipart)
    end do
    close(777)
    
    ! Find the critical alpha with minimum gap
    temp_index = minloc(gap, dim=1)
    write(*,*) "Critical alpha with minimum gap: ", float(temp_index-1)/float(npartitions-1)
-   write(*,*) "Minimum gap value: ", gap(temp_index)
+   write(*,*) "Minimum gap value: ", gap(temp_index), gapp(temp_index)
    
 else
    ! Send results to master process

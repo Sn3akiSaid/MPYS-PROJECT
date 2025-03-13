@@ -30,10 +30,13 @@ contains
       ! Open the trivial and topological files
       open(newunit=unit_trivial, file=trim(hamil_file_trivial), status='old', action='read')
       open(newunit=unit_topological, file=trim(hamil_file_topological), status='old', action='read')
+      read(unit_trivial, *)        ! Skip line 1
+      read(unit_trivial, *)        ! Skip line 2
+      read(unit_trivial, *)        ! Skip line 3
       read(unit_trivial, *) ndeg
       ! skip header information and dimensions
       do i = 1, 80
-          read(unit_trivial, *)
+          read(unit_topological, *)
       end do
       
       do k = 1, nr

@@ -54,8 +54,8 @@ contains
       ! Loop over partitions: accumulate the Fourier sums and compute eigenvalues
       do k = 1, kspace
           ! Initialize accumulation arrays to zero
-          Hk_trivial = cmplx(0d0, 0d0)
-          Hk_topological = cmplx(0d0, 0d0)
+          Hk_trivial = (0d0, 0d0)
+          Hk_topological = (0d0, 0d0)
           
           do j = 1, nr
               phase_factor = phases(j, k)
@@ -114,45 +114,41 @@ contains
       
       ! Loop over partitions
       do k = 1, kspace
-          ! Initialize accumulators
-          Hk_trivial = cmplx(0d0, 0d0)
-          Hk_topological = cmplx(0d0, 0d0)
-          
-          ! Compute contributions from each site
-          do j = 1, nr
-              ! Calculate phases
-              phase_trivial = 0.0d0
-              phase_topological = 0.0d0
+        ! Initialize accumulators
+        Hk_trivial = (0d0, 0d0)
+        Hk_topological = (0d0, 0d0)
               
-              do i = 1, size(bvec, 2)
-                  phase_trivial = phase_trivial + dot_product(mesh(:, k),rvec_trivial(:, j))
-                  phase_topological = phase_topological + dot_product(mesh(:, k),rvec_topological(:, j))
-              end do
+        ! Compute contributions from each site
+        do j = 1, nr
+             ! Calculate phases once per site
+             phase_trivial = dot_product(mesh(:, k), rvec_trivial(:, j))
+             phase_topological = dot_product(mesh(:, k), rvec_topological(:, j))
+                  
+             ! Convert to complex phase factors
+             phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / float(ndeg_trivial(j))
+             phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / float(ndeg_topological(j))
+                  
+             ! Add contributions to Hamiltonian
+             Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor_trivial
+             Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor_topological
+        end do
               
-              ! Convert to complex phase factors
-              phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / dble(ndeg_trivial(j))
-              phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / dble(ndeg_topological(j))
+        ! Interpolate and add perturbation
+        Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
+        H = Hk + Hmag
               
-              ! Add contributions to Hamiltonian
-              Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor_trivial
-              Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor_topological
-          end do
-          
-          ! Interpolate and add perturbation
-          Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
-          H = Hk + Hmag
-          
-          ! Compute eigenvalues/eigenvectors
-          call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
-          call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
-          
-          if (info /= 0) then
-              if (rank == 0) then
-                  write(*,*) "ZHEEV failed with info =", info
-              end if
-              call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
-          end if
-      end do
+        ! Compute eigenvalues/eigenvectors
+        call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+        call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
+              
+        if (info /= 0) then
+             if (rank == 0) then
+                 write(*,*) "ZHEEV failed with info =", info
+             end if
+             call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
+        end if
+    end do
+    
       
       deallocate(Hk_trivial, Hk_topological, Hk, H)
   end subroutine fourier_transform_general

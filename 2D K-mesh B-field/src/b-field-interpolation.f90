@@ -10,9 +10,9 @@ program interpolate_topology
     
     !--------Presets
     character(len=80):: prefix="BiTeI"
-    integer, parameter :: np=100, npartitions=10, &  ! Adjust these parameters for resolution
+    integer, parameter :: np=30, npartitions=10, &  ! Adjust these parameters for resolution
                          dim=2                      ! dimensions in k-space
-    real*8, parameter :: B_x = 0d0, B_y = 0.05d0, B_z = 0d0 ! Magnetic field components
+    real*8, parameter :: B_x = 0d0, B_y = 0.01d0, B_z = 0d0 ! Magnetic field components
     
     !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -20,7 +20,7 @@ program interpolate_topology
     
     !---------Variable declarations
     character(len=80) :: hamil_file_trivial, hamil_file_topological, nnkp, line, partnumber
-    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 4x4/'  ! 4x4 Hamiltonian directory
+    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 18x18/'  ! 4x4 Hamiltonian directory
     
     integer :: ik, ipart, ib, is, i, j, k, n, nr, nb, i1, i2, lwork, info, &
                o, p, j1, j2, total_pairs, temp_index
@@ -62,7 +62,7 @@ program interpolate_topology
     integer, allocatable :: indices(:)
     
     ! Flags
-    logical :: useOptimized = .false.  ! Set to false for 4x4 case
+    logical :: useOptimized = .true.  ! Set to false for 4x4 case
 
 !--------- Initialize MPI environment
     call MPI_INIT(ierr)
@@ -209,10 +209,14 @@ program interpolate_topology
          !alpha=0d0
          ! Initialize Hamiltonians for the current partition
          ene=0d0
-!----- FOURIER TRANSFORM 
-         call fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
-          rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
-          Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
+! !----- FOURIER TRANSFORM 
+!          call fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
+!           rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
+!           Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
+
+         call fourier_transform_optimized(np, dim, nr, nb, ndeg, mesh, rvec, &
+         Hamr_trivial, Hamr_topological, Hmag, alpha, &
+         enep, ene, work, lwork, rwork, rank, ierr)
 
 !----- END FOURIER TRANSFORM
             
@@ -243,10 +247,10 @@ program interpolate_topology
 
          
 !------calcualte gap and Fermi level
-         gapp(ipart)= minval(enep(13,:))-maxval(enep(12,:))
-         gap(ipart)= minval(ene(13,:))-maxval(ene(12,:))
+         gapp(ipart)= minval(enep(3,:))-maxval(enep(2,:))
+         gap(ipart)= minval(ene(3,:))-maxval(ene(2,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
-         efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
+        !  efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
 
 !------Export data
            ! Only rank 0 writes output files
@@ -256,7 +260,7 @@ program interpolate_topology
           open(100,file=trim(line))
              
             do k=1,(np+1)**dim
-                  write(100,'(6(x,f12.6))') mesh(1:2,k), (enep(i,k)-efp(ipart), i=11,14)!,&
+                  write(100,'(6(x,f12.6))') mesh(1:2,k), (ene(i,k), i=11,14)!,&
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)

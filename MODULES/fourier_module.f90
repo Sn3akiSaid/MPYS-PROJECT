@@ -40,16 +40,16 @@ contains
       complex*16, allocatable :: Hk_trivial(:,:), Hk_topological(:,:), Hk(:,:), H(:,:)
       
       kspace = (np+1)**dim
-      allocate(phases(nr, kspace))
+    !   allocate(phases(nr, kspace))
       allocate(Hk_trivial(nb, nb), Hk_topological(nb, nb), Hk(nb, nb), H(nb, nb))
       
       ! Compute phase factors: for each partition (k) and contribution (j)
-      do k = 1, kspace
-          do j = 1, nr
-              phase = dot_product(mesh(:, k), rvec(:, j))
-              phases(j, k) = dcmplx(cos(phase), -sin(phase)) / dble(ndeg(j))
-          end do
-      end do
+    !   do k = 1, kspace
+    !       do j = 1, nr
+    !           phase = dot_product(mesh(:, k), rvec(:, j))
+    !           phases(j, k) = dcmplx(cos(phase), -sin(phase)) / dble(ndeg(j))
+    !       end do
+    !   end do
       
       ! Loop over partitions: accumulate the Fourier sums and compute eigenvalues
       do k = 1, kspace
@@ -58,7 +58,9 @@ contains
           Hk_topological = (0d0, 0d0)
           
           do j = 1, nr
-              phase_factor = phases(j, k)
+              phase = dot_product(mesh(:, k), rvec(:, j))
+              phase_factor = dcmplx(cos(phase), -sin(phase)) / dble(ndeg(j))
+            !   phase_factor = phases(j, k)!!! CONT FROM HERE
               Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
               Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
           end do
@@ -79,23 +81,22 @@ contains
           end if
       end do
       
-      deallocate(phases, Hk_trivial, Hk_topological, Hk, H)
+      deallocate(Hk_trivial, Hk_topological, Hk, H)
   end subroutine fourier_transform_optimized
   
   !--------------------------------------------------------------------
   ! Subroutine for the general Fourier transform (4x4 case)
-  subroutine fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
-                                      rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
+  subroutine fourier_transform_general(np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
+                                      rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
                                       Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
       implicit none
       ! Inputs:
-      integer, intent(in) :: np, dim, nr, nb, lwork, rank
+      integer, intent(in) :: np, dim, nr_trivial,nr_topological, nb, lwork, rank
       real*8, intent(in) :: alpha
-      integer, intent(in) :: ndeg_topological(nr),ndeg_trivial(nr)
+      integer, intent(in) :: ndeg_topological(nr_topological),ndeg_trivial(nr_trivial)
       real*8, intent(in) :: mesh(3, (np+1)**dim)
-      real*8, intent(in) :: bvec(3,3), avec(3,3)
-      real*8, intent(in) :: rvec_trivial(3, nr), rvec_topological(3, nr)
-      complex*16, intent(in) :: Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr)
+      real*8, intent(in) :: rvec_trivial(3, nr_trivial), rvec_topological(3, nr_topological)
+      complex*16, intent(in) :: Hamr_trivial(nb, nb, nr_trivial), Hamr_topological(nb, nb, nr_topological)
       complex*16, intent(in) :: Hmag(nb, nb)
       ! Outputs:
       real*8, intent(out) :: enep(nb, (np+1)**dim), ene(nb, (np+1)**dim)
@@ -104,14 +105,27 @@ contains
       real*8, intent(inout) :: rwork(*)
       integer, intent(out) :: ierr
       ! Local variables:
-      integer :: k, j, kspace, i, info
+      integer :: k, j, kspace, info
       real*8 :: phase_trivial, phase_topological
       complex*16 :: phase_factor_trivial, phase_factor_topological
+    !   complex*16, allocatable :: phase_factor_trivial(:,:), phase_factor_topological(:,:)
       complex*16, allocatable :: Hk_trivial(:,:), Hk_topological(:,:), Hk(:,:), H(:,:)
       
       kspace = (np+1)**dim
+    !   allocate(phase_factor_trivial(nr_trivial, kspace), phase_factor_topological(nr_topological, kspace))
       allocate(Hk_trivial(nb, nb), Hk_topological(nb, nb), Hk(nb, nb), H(nb, nb))
       
+    !   do k = 1, kspace
+    !     do j = 1, nr_trivial
+    !         phase_trivial = dot_product(mesh(:, k), rvec_trivial(:, j))
+    !         phase_factor_trivial(j, k) = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / dble(ndeg_trivial(j))
+    !     end do
+    !     do j = 1, nr_topological
+    !       phase_topological = dot_product(mesh(:, k), rvec_topological(:, j))
+    !       phase_factor_topological(j, k) = dcmplx(cos(phase_topological), -sin(phase_topological)) / dble(ndeg_topological(j))
+    !     end do
+    ! end do
+    
       ! Loop over partitions
       do k = 1, kspace
         ! Initialize accumulators
@@ -119,20 +133,18 @@ contains
         Hk_topological = (0d0, 0d0)
               
         ! Compute contributions from each site
-        do j = 1, nr
-             ! Calculate phases once per site
-             phase_trivial = dot_product(mesh(:, k), rvec_trivial(:, j))
-             phase_topological = dot_product(mesh(:, k), rvec_topological(:, j))
-                  
-             ! Convert to complex phase factors
-             phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / float(ndeg_trivial(j))
-             phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / float(ndeg_topological(j))
-                  
-             ! Add contributions to Hamiltonian
-             Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor_trivial
-             Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor_topological
+        ! Sum contributions from trivial sites:
+        do j = 1, nr_trivial
+            phase_trivial = dot_product(mesh(:, k), rvec_trivial(:, j))
+            phase_factor_trivial = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / float(ndeg_trivial(j))
+            Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor_trivial!(j,k)
         end do
-              
+        ! Sum contributions from topological sites:
+        do j = 1, nr_topological
+            phase_topological = dot_product(mesh(:, k), rvec_topological(:, j))
+            phase_factor_topological = dcmplx(cos(phase_topological), -sin(phase_topological)) / float(ndeg_topological(j))
+            Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor_topological!(j,k)
+        end do
         ! Interpolate and add perturbation
         Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
         H = Hk + Hmag
@@ -149,8 +161,7 @@ contains
         end if
     end do
     
-      
-      deallocate(Hk_trivial, Hk_topological, Hk, H)
+      deallocate(Hk_trivial, Hk_topological, Hk, H)!, phase_factor_trivial, phase_factor_topological)
   end subroutine fourier_transform_general
   
 end module fourier_module

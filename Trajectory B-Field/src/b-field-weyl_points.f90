@@ -74,9 +74,9 @@ program generate_fermi
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: x_min = -0.06d0, x_max = 0.06d0,&
-                         y_min = -0.06d0, y_max = 0.06d0,&
-                         z_min = -0.03d0, z_max = 0.03d0
+    real*8, parameter :: kbox_x=0.12!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.12!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.6!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -176,28 +176,26 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
 !-------Generate Mesh
 
-    dx = (x_max - x_min)/np
-    dy = (y_max - y_min)/np
-    dz = (z_max - z_min)/np
-    
+    ! dx = (x_max - x_min)/np
+    ! dy = (y_max - y_min)/np
+    ! dz = (z_max - z_min)/np
+    delkx = kbox_x/(2*np)
+    delky = kbox_y/(2*np)
+    delkz = kbox_z/(2*np)
+
     j=0
-    do i = 0, np
-        do n = 0, np
-            do k = 0, np
+    do i = -np, np ! -np,np
+        do n = -np, np
+            do k = -np, np
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                ! kx = x_min + i*dx
-                ! ky = y_min + n*dy
-                ! kz = z_min + k*dz + 0.5   ! e.g. top face if 0.5 is the fractional shift
-                ! mesh(1,j) = kx*bvec(1,1) + ky*bvec(1,2) + kz*bvec(1,3)
-                ! mesh(2,j) = kx*bvec(2,1) + ky*bvec(2,2) + kz*bvec(2,3)
-                ! mesh(3,j) = kx*bvec(3,1) + ky*bvec(3,2) + kz*bvec(3,3)
-                mesh(1, j) = (x_min + i * dx )* bvec(1,1)
-                mesh(2, j) = (y_min + n * dy )* (bvec(1,2)+bvec(2,2))
-                mesh(3, j) = (z_min + k * dz ) + 0.5*bvec(3,3)
+                mesh(1, j) = i*delkx!(x_min + i * dx )!* bvec(1,1)  ! = i*delkx
+                mesh(2, j) = n*delky!(y_min + n * dy )!* (bvec(1,2)+bvec(2,2)) ! = n*delky
+                mesh(3, j) = k*delkz!(z_min + k * dz ) + 0.5*bvec(3,3) ! = k*delkz
             end do
         end do
     end do
+    mesh(3,:) = mesh(3,:) + 0.5 * bvec(3,3)
 !------ Magnetic Field
     allocate(Hm(2,2),Hmag(nb,nb))
     Hm = B_x*sigx + B_y*sigy + B_z*sigz

@@ -11,7 +11,7 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=100,npartitions=10,dim=3
+    integer,parameter::np=30,npartitions=10,dim=3
          ! Flags
     logical :: useOptimized = .false.  ! Set to false for 4x4 case
     
@@ -39,7 +39,8 @@ program generate_fermi
             temp_index
     
     real*8 kx,ky,kz,&
-           phase, dx, dy, dz, bandgap,bandgapp,&
+           phase, dx, dy, dz,&
+           delkx, delky, delkz, bandgap,bandgapp,&
            twopi,jk,a,b,a1,b1,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
            spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
@@ -74,9 +75,9 @@ program generate_fermi
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: kbox_x=0.12!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.12!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.6!z_min = -0.03d0, z_max = 0.03d0
+    real*8, parameter :: kbox_x=0.065d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.065d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.03d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -168,7 +169,7 @@ lwork=max(1,2*nb-1)
 allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 ! allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 
-    allocate(mesh(3, (np+1)**dim))
+    allocate(mesh(3, (2*np+1)**dim))
 !------ open gap file
     open(777,file='gap.dat',status='replace', position='append', action='write')
     open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write')
@@ -179,9 +180,9 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     ! dx = (x_max - x_min)/np
     ! dy = (y_max - y_min)/np
     ! dz = (z_max - z_min)/np
-    delkx = kbox_x/(2*np)
-    delky = kbox_y/(2*np)
-    delkz = kbox_z/(2*np)
+    delkx = kbox_x/(2*np+1)
+    delky = kbox_y/(2*np+1)
+    delkz = kbox_z/(2*np+1)
 
     j=0
     do i = -np, np ! -np,np
@@ -191,11 +192,11 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
                 ! Calculate coordinates directly
                 mesh(1, j) = i*delkx!(x_min + i * dx )!* bvec(1,1)  ! = i*delkx
                 mesh(2, j) = n*delky!(y_min + n * dy )!* (bvec(1,2)+bvec(2,2)) ! = n*delky
-                mesh(3, j) = k*delkz!(z_min + k * dz ) + 0.5*bvec(3,3) ! = k*delkz
+                mesh(3, j) = k*delkz+0.5d0*bvec(3,3)!(z_min + k * dz ) + 0.5*bvec(3,3) ! = k*delkz
             end do
         end do
     end do
-    mesh(3,:) = mesh(3,:) + 0.5 * bvec(3,3)
+    
 !------ Magnetic Field
     allocate(Hm(2,2),Hmag(nb,nb))
     Hm = B_x*sigx + B_y*sigy + B_z*sigz
@@ -235,7 +236,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     !    ene=0d0
 
 ! !----- FOURIER TRANSFORM 
-       call fourier_transform_general(np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
+       call fourier_transform_general(2*np+1, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
                                       rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
                                       Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
 
@@ -275,11 +276,11 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
                 bandgapp=enep(3,k)-enep(2,k)
 
                 ! print*, bandgap
-                if (abs(bandgap-(gap_min(ipart))) .lt. 0.001d0) then
+                if (abs(bandgap-(gap_min(ipart))) .lt. 0.01d0) then
                     print*, abs(bandgap-(gap_min(ipart)))
                     write(100, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgap-(gap_min(ipart)))!, gap_min(ipart)
                 endif
-                if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.001d0) then
+                if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.01d0) then
                     print*, abs(bandgapp-(gapp_min(ipart)))
                     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgapp-(gapp_min(ipart)))!, gap_min(ipart)
                 endif

@@ -42,15 +42,6 @@ contains
       kspace = (np+1)**dim
     !   allocate(phases(nr, kspace))
       allocate(Hk_trivial(nb, nb), Hk_topological(nb, nb), Hk(nb, nb), H(nb, nb))
-      
-      ! Compute phase factors: for each partition (k) and contribution (j)
-    !   do k = 1, kspace
-    !       do j = 1, nr
-    !           phase = dot_product(mesh(:, k), rvec(:, j))
-    !           phases(j, k) = dcmplx(cos(phase), -sin(phase)) / dble(ndeg(j))
-    !       end do
-    !   end do
-      
       ! Loop over partitions: accumulate the Fourier sums and compute eigenvalues
       do k = 1, kspace
           ! Initialize accumulation arrays to zero
@@ -59,7 +50,7 @@ contains
           
           do j = 1, nr
               phase = dot_product(mesh(:, k), rvec(:, j))
-              phase_factor = dcmplx(cos(phase), -sin(phase)) / dble(ndeg(j))
+              phase_factor = dcmplx(cos(phase), -sin(phase)) / float(ndeg(j))
             !   phase_factor = phases(j, k)!!! CONT FROM HERE
               Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
               Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
@@ -67,10 +58,10 @@ contains
           
           ! Interpolate and add perturbation:
           Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
-          H = Hk + Hmag
+          ! H = Hk + Hmag
           
           ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
-          call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+          ! call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
           call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
           
           if (info /= 0) then
@@ -115,17 +106,6 @@ contains
     !   allocate(phase_factor_trivial(nr_trivial, kspace), phase_factor_topological(nr_topological, kspace))
       allocate(Hk_trivial(nb, nb), Hk_topological(nb, nb), Hk(nb, nb), H(nb, nb))
       
-    !   do k = 1, kspace
-    !     do j = 1, nr_trivial
-    !         phase_trivial = dot_product(mesh(:, k), rvec_trivial(:, j))
-    !         phase_factor_trivial(j, k) = dcmplx(cos(phase_trivial), -sin(phase_trivial)) / dble(ndeg_trivial(j))
-    !     end do
-    !     do j = 1, nr_topological
-    !       phase_topological = dot_product(mesh(:, k), rvec_topological(:, j))
-    !       phase_factor_topological(j, k) = dcmplx(cos(phase_topological), -sin(phase_topological)) / dble(ndeg_topological(j))
-    !     end do
-    ! end do
-    
       ! Loop over partitions
       do k = 1, kspace
         ! Initialize accumulators

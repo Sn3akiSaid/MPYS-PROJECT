@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 import matplotlib.tri as tri
 from matplotlib.widgets import Slider
 # Load the data
-data = np.loadtxt('Energy_part_0.5B_np500_1.dat')
+data = np.loadtxt('k_surface_fermi_energies_By_0.01_part_1.dat')
+#data = np.loadtxt('Energy_part_0.5B_np500_1.dat')
 
 kx = data[:, 0]
 ky = data[:, 1]

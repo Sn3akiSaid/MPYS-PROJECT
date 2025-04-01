@@ -11,5 +11,5 @@ set palette defined (-1 "red", 0 "white", 1 "blue")
 set style line 1 dashtype 3 pointsize default lw 3
 set terminal pdfcairo enhanced font "Times New Roman" fontscale 1 size 5.00in, 4.50in
 set output "By,kx,triv-FIXED.pdf"
-plot "band_partition_1.dat" u 1:2:3 w l ls 1 lc palette notitle, \
-     "band_partition_1.dat" u 1:4:5 w l lw 2 lc palette notitle
+plot "band_partition_17.dat" u 1:2:3 w l ls 1 lc palette notitle, \
+     "band_partition_17.dat" u 1:4:5 w l lw 2 lc palette notitle

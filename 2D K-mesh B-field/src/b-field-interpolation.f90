@@ -5,14 +5,20 @@
 program interpolate_topology
     use mpi
     use reading_module
-    use fourier_module
+    use fourier_module!!!TFFF
     implicit none
     
-    !--------Presets
+!--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
-    integer, parameter :: np=30, npartitions=10, &  ! Adjust these parameters for resolution
-                         dim=2                      ! dimensions in k-space
-    real*8, parameter :: B_x = 0d0, B_y = 0.01d0, B_z = 0d0 ! Magnetic field components
+    !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
+    integer,parameter::np=100,npartitions=5,dim=3
+         ! Flags
+    logical :: useOptimized = .false.  ! Set to false for 4x4 case
+    
+    real*8,parameter::B_x = 0d0, B_y = 0.05d0, B_z = 0d0,& !Run again at B_y=0.05-0.06 to see the gap close
+                    !   alpha_min = 0.605d0, alpha_max = 0.625d0
+                      alpha_min = 0.602d0, alpha_max = 0.605d0
+                    !   alpha_min = 0.76d0, alpha_max = 0.78d0
     
     !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -20,9 +26,9 @@ program interpolate_topology
     
     !---------Variable declarations
     character(len=80) :: hamil_file_trivial, hamil_file_topological, nnkp, line, partnumber
-    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 18x18/'  ! 4x4 Hamiltonian directory
+    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 4x4/'  ! 4x4 Hamiltonian directory
     
-    integer :: ik, ipart, ib, is, i, j, k, n, nr, nb, i1, i2, lwork, info, &
+    integer :: ik, ipart, ib, is, i, j, k, n, nr_trivial, nr_topological, nb, i1, i2, lwork, info, &
                o, p, j1, j2, total_pairs, temp_index
     
     real*8 :: phase, dx, dy, dz, twopi, jk, a, b, a1, b1, &
@@ -56,14 +62,11 @@ program interpolate_topology
                               Hamr_trivial(:,:,:), Hamr_topological(:,:,:), &
                               work(:)
     
-    real*8, parameter :: x_min = -0.1d0, x_max = 0.1d0, &
-                         y_min = -0.1d0, y_max = 0.1d0
+    real*8, parameter :: x_min = -0.06d0, x_max = 0.06d0, &
+                         y_min = -0.06d0, y_max = 0.06d0
     
     integer, allocatable :: indices(:)
     
-    ! Flags
-    logical :: useOptimized = .true.  ! Set to false for 4x4 case
-
 !--------- Initialize MPI environment
     call MPI_INIT(ierr)
     call MPI_COMM_SIZE(MPI_COMM_WORLD, nprocs, ierr)
@@ -110,51 +113,54 @@ program interpolate_topology
     ! read(97,*)
     ! read(97,*)!Skip nb,nr same as other file
     ! read(99,*)nb,nr
-      call read_header(hamil_file_trivial, nb, nr)
-      call read_header(hamil_file_topological, nb, nr)
+      call read_header(hamil_file_trivial, nb, nr_trivial)
+      write(*,*) nb,nr_trivial
+      call read_header(hamil_file_topological, nb, nr_topological)
+      write(*,*) nb,nr_topological
     endif
     ! Broadcast necessary values to all processes
 
   call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-  call MPI_BCAST(nr, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+  call MPI_BCAST(nr_trivial, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+  call MPI_BCAST(nr_topological, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 
-        allocate(rvec(3, nr),rvec_trivial(3, nr), rvec_topological(3, nr))
-        allocate(Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr))
+        allocate(rvec_trivial(3, nr_trivial), rvec_topological(3, nr_topological))
+        allocate(Hamr_trivial(nb, nb, nr_trivial), Hamr_topological(nb, nb, nr_topological))
         allocate(Hk_topological(nb,nb),Hk_trivial(nb,nb))
         allocate(H(nb,nb),Hk(nb,nb))
-        allocate(ndeg(nr),ndeg_trivial(nr),ndeg_topological(nr))
+        allocate(ndeg_trivial(nr_trivial),ndeg_topological(nr_topological))
         allocate(enep(nb, (np+1)**dim), ene(nb, (np+1)**dim))
   ! Only rank 0 reads the Hamiltonian data
     if (rank == 0) then
 
     if (useOptimized) then
         if (rank == 0) then
-            call read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
-            Hamr_trivial, Hamr_topological, rvec, ndeg, avec)
+            call read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, &
+            Hamr_trivial, Hamr_topological, rvec_trivial, ndeg_trivial, avec)
             rvec_topological = rvec_trivial
         end if
         else
-            call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
+            call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, nr_topological, &
             Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg_trivial, ndeg_topological, avec)
         endif
     end if
 
 
 ! Broadcast the read data to all processes
-    call MPI_BCAST(ndeg_trivial, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-    call MPI_BCAST(ndeg_topological, nr, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-    call MPI_BCAST(rvec_trivial, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-    call MPI_BCAST(rvec_topological, 3*nr, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-    call MPI_BCAST(hamr_trivial, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
-    call MPI_BCAST(hamr_topological, nb*nb*nr, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(ndeg_trivial, nr_trivial, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(ndeg_topological, nr_topological, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(rvec_trivial, 3*nr_trivial, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(rvec_topological, 3*nr_topological, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(hamr_trivial, nb*nb*nr_trivial, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
+    call MPI_BCAST(hamr_topological, nb*nb*nr_topological, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
 !------ LAPACK-related array allocations
       lwork=max(1,2*nb-1)
       allocate(work(max(1,lwork)),&
                rwork(max(1,3*nb-2)))
       !allocate(weightx(nb,(np+1)**2),weighty(nb,(np+1)**2),weightz(nb,(np+1)**2))
-      allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
+    !   allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 !------ open gap file
-      open(777,file='gap.dat')
+      open(777,file='gapehhhh.dat')
 
 !-------- Calculate the total number of pairs
       allocate(mesh(3, (np+1)**dim))
@@ -205,18 +211,22 @@ program interpolate_topology
           if (rank == 0) then
               write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
           endif
-         alpha=float(ipart-1)/float(npartitions-1)
+        !  alpha=float(ipart-1)/float(npartitions-1)
+          alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
+          if (rank == 0) then
+              write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
+          endif
          !alpha=0d0
          ! Initialize Hamiltonians for the current partition
          ene=0d0
 ! !----- FOURIER TRANSFORM 
-!          call fourier_transform_general(np, dim, nr, nb, ndeg_trivial, ndeg_topological, mesh, bvec, avec, &
-!           rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological, &
-!           Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
+         call fourier_transform_general(np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
+         rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
+         Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
 
-         call fourier_transform_optimized(np, dim, nr, nb, ndeg, mesh, rvec, &
-         Hamr_trivial, Hamr_topological, Hmag, alpha, &
-         enep, ene, work, lwork, rwork, rank, ierr)
+            ! call fourier_transform_optimized(np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
+            !                                  Hamr_trivial, Hamr_topological, Hmag, alpha, &
+            !                                  enep, ene, work, lwork, rwork, rank, ierr)
 
 !----- END FOURIER TRANSFORM
             
@@ -251,22 +261,22 @@ program interpolate_topology
          gap(ipart)= minval(ene(3,:))-maxval(ene(2,:))
          ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
         !  efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
-
+         print *, gap(ipart), gapp(ipart)
 !------Export data
            ! Only rank 0 writes output files
       if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
           write(partnumber,'(i5)') ipart
-          write(line,'(3a)') 'k_surface_fermi_energies_By_0.05_part_',trim(adjustl(partnumber)),'.dat' 
+        !   write(line,'(3a)') 'k_surface_fermi_energies_By_0.05_part_',trim(adjustl(partnumber)),'.dat' 
           open(100,file=trim(line))
              
-            do k=1,(np+1)**dim
-                  write(100,'(6(x,f12.6))') mesh(1:2,k), (ene(i,k), i=11,14)!,&
+            ! do k=1,(np+1)**dim
+                !   write(100,'(10(x,f12.6))') mesh(1:2,k), (ene(i,k), i=1,nb)!,&
                                             ! spinp(1:3,i,k),&!need to minimize the energy wrt fermi energy
                                             ! sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                   !write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)
-            end do
-            write(100,*)
-            write(100,*)
+            ! end do
+            ! write(100,*)
+            ! write(100,*)
             close(100)
       endif
        
@@ -300,9 +310,11 @@ if (rank == 0) then
    end do
    
    ! Write out the gap data for all partitions
-   open(777, file='gap.dat')
+   open(777,file='gapehhhh.dat')
    do ipart = 1, npartitions
-       write(777, '(3(x,f12.6))') float(ipart-1)/float(npartitions-1), gap(ipart), gapp(ipart)
+    alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
+       
+       write(777, '(3(x,f12.6))') alpha, gap(ipart), gapp(ipart)!float(ipart-1)/float(npartitions-1)
    end do
    close(777)
    

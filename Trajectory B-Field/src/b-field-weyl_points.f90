@@ -13,13 +13,13 @@ program generate_fermi
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
     integer,parameter::np=15,npartitions=10,dim=3
          ! Flags
-    logical :: useOptimized = .false.  ! Set to false for 4x4 case
+    logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
-    real*8,parameter::B_x = 0d0, B_y = 0.1d0, B_z = 0d0,& !Run again at B_y=0.05-0.06 to see the gap close
-                      alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range
+    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0,& !Run again at B_y=0.05-0.06 to see the gap close
+                    !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                    !   alpha_min = 0.793d0, alpha_max = 0.815d0 !18x18 range
+                      alpha_min = 0.805d0, alpha_max = 0.810d0 !18x18 range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -27,7 +27,7 @@ program generate_fermi
 
 !---------Variable allocation
     character(len=80) :: hamil_file_trivial, hamil_file_topological, nnkp, line, partnumber
-    character(len=200) :: hamil_dir = '../Hamiltonians 4x4/'
+    character(len=200) :: hamil_dir = '../Hamiltonians 18x18/'
 
     integer ik, ipart, ib, is,&
             i,j,k,&
@@ -77,7 +77,7 @@ program generate_fermi
 
     real*8, parameter :: kbox_x=0.12d0,&!x_min = -0.06d0, x_max = 0.06d0,&
                          kbox_y=0.12d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.06d0!z_min = -0.03d0, z_max = 0.03d0
+                         kbox_z=0.05d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -176,7 +176,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     ! if (ierr /= 0) then
     !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
     ! end if
-    open(110,file='trajectory_p_4_0.001.dat',status='old', position='append', action='write')
+    open(110,file='trysm.dat',status='old', position='append', action='write')
 
 !-------Generate Mesh
     delkx = kbox_x/(2*np+1)
@@ -198,7 +198,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     mesh(3,:)=mesh(3,:)+0.5d0*bvec(3,3)
     if (rank == 0) then
         write(*,*) "Total mesh points generated:", j
-        write(*,*) "Expected mesh points:", (2*np+1)**3
+        write(*,*) "Expected mesh points:", (2*np+1)**dim
     endif
 !------ Magnetic Field
     allocate(Hm(2,2),Hmag(nb,nb))
@@ -239,13 +239,13 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     !    ene=0d0
 
 ! !----- FOURIER TRANSFORM 
-       call fourier_transform_general(2*np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
-                                      rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
-                                      Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
+    !    call fourier_transform_general(2*np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
+    !                                   rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
+    !                                   Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
 
-    !    call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
-    !                                     Hamr_trivial, Hamr_topological, Hmag, alpha, &
-    !                                     enep, ene, work, lwork, rwork, rank, ierr)
+       call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
+                                        Hamr_trivial, Hamr_topological, Hmag, alpha, &
+                                        enep, ene, work, lwork, rwork, rank, ierr)
 
 !----- END FOURIER TRANSFORM
 
@@ -254,10 +254,10 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     !    print *, minval(ene(3,:)),maxval(ene(2,:))
     !    gap_min(ipart)=abs(minval(ene(3,:))-maxval(ene(2,:)))
     !    print *, "MINGAP: ", gap_min(ipart)
-       gapp_min(ipart)=abs(minval(enep(3,:))-maxval(enep(2,:)))
+    !    gapp_min(ipart)=abs(minval(enep(3,:))-maxval(enep(2,:)))
     !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:)))
     !    print *, "MINGAP: ", gap_min(ipart)
-    !    gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:)))
+       gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:)))
     !    ef(ipart)=(minval(ene(3,:))+maxval(ene(2,:)))/2d0
     !    efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
     !    gap_perturbed(ipart)=minval(enep(13,:))-maxval(enep(12,:))
@@ -278,23 +278,23 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
         !   end do
             do k=1,(2*np+1)**dim
                 ! bandgap=ene(3,k)-ene(2,k)
-                bandgapp=enep(3,k)-enep(2,k)
+                ! bandgapp=enep(3,k)-enep(2,k)
                 ! bandgap=ene(13,k)-ene(12,k)
-                ! bandgapp=enep(13,k)-enep(12,k)
+                bandgapp=enep(13,k)-enep(12,k)
 
                 ! print*, bandgap
                 ! if (abs(bandgap-(gap_min(ipart))) .lt. 0.01d0) then
                 !     print*, abs(bandgap-(gap_min(ipart)))
                 !     write(100, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgap-(gap_min(ipart)))!, gap_min(ipart)
                 ! endif
-                if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.01d0) then
+                if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.001d0) then
                     print*, abs(bandgapp-(gapp_min(ipart)))
                     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgapp-(gapp_min(ipart)))!, gap_min(ipart)
                 endif
             end do
 
-            write(100,*)
-            write(100,*)
+            ! write(100,*)
+            ! write(100,*)
             write(110,*)
             write(110,*)
             

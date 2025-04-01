@@ -58,10 +58,10 @@ contains
           
           ! Interpolate and add perturbation:
           Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
-          ! H = Hk + Hmag
+          H = Hk + Hmag
           
           ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
-          ! call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+          call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
           call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
           
           if (info /= 0) then
@@ -131,7 +131,7 @@ contains
               
         ! Compute eigenvalues/eigenvectors
         call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
-        call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
+        !call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
               
         if (info /= 0) then
              if (rank == 0) then

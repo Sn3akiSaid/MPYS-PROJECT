@@ -19,7 +19,7 @@ program generate_fermi
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                      alpha_min = 0.805d0, alpha_max = 0.810d0 !18x18 range
+                      alpha_min = 0.77d0, alpha_max = 0.815d0 !18x18 range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -76,7 +76,7 @@ program generate_fermi
                              work(:)
 
     real*8, parameter :: kbox_x=0.12d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.12d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_y=0.16d0,&!y_min = -0.06d0, y_max = 0.06d0,&
                          kbox_z=0.05d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
@@ -171,12 +171,6 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
     allocate(mesh(3, (2*np+1)**dim))
 !------ open gap file
-    ! open(777,file='gap.dat',status='replace', position='append', action='write')
-    ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
-    ! if (ierr /= 0) then
-    !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
-    ! end if
-    open(110,file='trysm.dat',status='old', position='append', action='write')
 
 !-------Generate Mesh
     delkx = kbox_x/(2*np+1)
@@ -223,13 +217,14 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     end if
     
     ! Each process handles its own partitions
-    ! critical_alpha=0.789473712
     
     do ipart = local_start, local_end!1, npartitions
         if (rank == 0) then
             write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
         endif
        !alpha=float(ipart-1)/float(npartitions-1)
+
+        ! alpha=0.789473712 
         alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
         if (rank == 0) then
             write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
@@ -249,33 +244,42 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
 !----- END FOURIER TRANSFORM
 
+    ! open(777,file='gap.dat',status='replace', position='append', action='write')
+    ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
+    ! if (ierr /= 0) then
+    !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
+    ! end if
+    open(110,file='NEWPERTURBED.dat',status='old', position='append', action='write')
+    open(120,file='FERMISURFACE.dat', status='new', position='appends',action='write')
+!------Band gap and Fermi energy calculations
+    
+    !---4x4---!
+    !    gap_min(ipart)=abs(minval(ene(3,:))-maxval(ene(2,:))) !Unperturbed Case
+    !    gapp_min(ipart)=abs(minval(enep(3,:))-maxval(enep(2,:))) !Perturbed Case
+    !    ef(ipart)=(minval(ene(3,:))+maxval(ene(2,:)))/2d0 
 
-!------calcualte gap and Fermi level
-    !    print *, minval(ene(3,:)),maxval(ene(2,:))
-    !    gap_min(ipart)=abs(minval(ene(3,:))-maxval(ene(2,:)))
-    !    print *, "MINGAP: ", gap_min(ipart)
-    !    gapp_min(ipart)=abs(minval(enep(3,:))-maxval(enep(2,:)))
-    !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:)))
-    !    print *, "MINGAP: ", gap_min(ipart)
-       gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:)))
-    !    ef(ipart)=(minval(ene(3,:))+maxval(ene(2,:)))/2d0
-    !    efp(ipart)=(minval(enep(13,:))+maxval(enep(12,:)))/2d0
-    !    gap_perturbed(ipart)=minval(enep(13,:))-maxval(enep(12,:))
-    !    gap()=abs(ene(13,i)-ene(12,i))
-!------Export data
+    !---18x18---!
+    !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
+       gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
+    !    ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
+
+
+!------Export data-------!
+
 !------Only rank 0 writes output files
     if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
-!------Export alphas with minimum gap value
+
         write(partnumber,'(i5)') ipart
-        ! open(101, file="gap_vs_alpha.dat")
-        
-        ! close(101)
-!------Write k-points for small gap
-    !    write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_trajectory.dat' 
-    !    write(line,'(3a)') 'k_points_for_alpha.dat'
-        !   do k=1,(np+1)**3
-        !         write(100, '(5(x,f12.6))') mesh(1:3,k), ene(12:13,k)- ef(ipart)
+
+!-------Uncomment to write Energies to file
+!-------These energies are needed for the fermi surface script
+        !   do k=1,(np+1)**dim
+        !         write(120, '(6(x,f12.6))') mesh(1:3,k), enep(13,k), ene(13,k), ef(ipart)
         !   end do
+
+
+!-------Write Weyl points to file
+!-------Uncoment depending on the Hamiltonian used, or if perturbation is added
             do k=1,(2*np+1)**dim
                 ! bandgap=ene(3,k)-ene(2,k)
                 ! bandgapp=enep(3,k)-enep(2,k)

@@ -3,13 +3,17 @@ import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib import cm
 from scipy.optimize import curve_fit
+from scipy.spatial.distance import cdist
+from matplotlib.colors import Normalize, LinearSegmentedColormap
+from matplotlib.collections import LineCollection
+from mpl_toolkits.mplot3d.art3d import Line3DCollection
 
 # Create a figure and 3D axis
 fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 
 # Load your actual data
-data = np.loadtxt("k_points_for_alpha_0.01.dat")
+data = np.loadtxt("18,0.001.dat")
 kx = data[:, 0]
 ky = data[:, 1]
 kz = data[:, 2]
@@ -66,16 +70,90 @@ x_model = x_center + radius_x * np.cos(t)  # X coordinates centered on data
 y_model = y_center + radius_y * np.sin(t)  # Y coordinates centered on data
 z_model = z_center_fit + z_amplitude_fit * np.sin(3*t + phase_offset_fit)  # Z with fitted phase
 
+# Create array of model points for distance calculation
+model_points = np.column_stack((x_model, y_model, z_model))
+data_points = np.column_stack((kx, ky, kz))
+
+# Calculate minimum distance from each data point to the model curve
+# This is computationally intensive but accurate
+distances = np.min(cdist(data_points, model_points), axis=1)
+
+# Calculate statistics for the distances
+mean_dist = np.mean(distances)
+median_dist = np.median(distances)
+std_dist = np.std(distances)
+
+
+# Filtering
+distance_threshold = mean_dist * 0.8
+close_points_mask = distances <= distance_threshold
+
+kx_filtered = kx[close_points_mask]
+ky_filtered = ky[close_points_mask]
+kz_filtered = kz[close_points_mask]
+alpha_filtered = alpha[close_points_mask]
+
+# Only look at Weyl points around zmin,zmax and middle
+z_middle = (z_min + z_max)/2
+z_tolerance = (z_max - z_min) * 0.05 # 5% of z range
+# Create masks for each condition
+min_z_mask = np.abs(kz_filtered - z_min) < z_tolerance
+max_z_mask = np.abs(kz_filtered - z_max) < z_tolerance
+mid_z_mask = np.abs(kz_filtered - z_middle) < z_tolerance
+
+combined_mask = min_z_mask | max_z_mask | mid_z_mask
+
 # Plot the 3D model curve
 ax.plot(x_model, y_model, z_model, 'r-', linewidth=2, alpha=0.7, label='Phase-Adjusted Model')
 
+kx_selected = kx_filtered[combined_mask]
+ky_selected = ky_filtered[combined_mask]
+kz_selected = kz_filtered[combined_mask]
+alpha_selected = alpha_filtered[combined_mask]
+angles_selected = np.arctan2(ky_selected - y_center, kx_selected - x_center)
+angles_selected = np.mod(angles_selected, 2*np.pi)
+
+selected_sort_idx = np.argsort(angles_selected)
+angles_selected_sorted = angles_selected[selected_sort_idx]
+alpha_selected_sorted = alpha_selected[selected_sort_idx]
+
+def map_alpha_to_curve(t_values, angles_source, alpha_source):
+    # For each t in t_values, find the closest angle in angles_source
+    alpha_mapped = np.zeros_like(t_values)
+    
+    for i, t_val in enumerate(t_values):
+        # Convert t to range [0, 2π] if it's not already
+        t_mod = np.mod(t_val, 2*np.pi)
+        
+        # Find the closest angle
+        idx = np.argmin(np.abs(angles_source - t_mod))
+        alpha_mapped[i] = alpha_source[idx]
+    
+    return alpha_mapped
+
+alpha_model = map_alpha_to_curve(t, angles_selected_sorted, alpha_selected_sorted)
+norm = Normalize(vmin=alpha_min, vmax=alpha_max)
+
+colors_blue_to_red = [(0, 0, 1), (0.5, 0.5, 0.5), (1, 0, 0)]  # Blue -> Gray -> Red
+blue_red_cmap = LinearSegmentedColormap.from_list("BlueToRed", colors_blue_to_red)
+
 # Plot the data points
-scatter = ax.scatter(kx, ky, kz, 
-                    c=alpha,  # Use alpha column for color
-                    cmap=cm.plasma,  # Color map
+scatter = ax.scatter(kx_selected, ky_selected, kz_selected, 
+                    c=alpha_selected,  # Use alpha column for color
+                    cmap=blue_red_cmap,  # Color map
                     s=30,  # Size of points
                     alpha=0.8,  # Opacity of points
+                    norm=norm,
                     label='Data')
+
+# Prepare the points for Line3DCollection
+points = np.array([x_model, y_model, z_model]).T.reshape(-1, 1, 3)
+segments = np.concatenate([points[:-1], points[1:]], axis=1)
+
+# Create a Line3DCollection with changing colors
+lc = Line3DCollection(segments, cmap=blue_red_cmap, norm=norm, linewidth=2)
+lc.set_array(alpha_model)  # Set the colors from the mapped alpha values
+ax.add_collection3d(lc)  # Add to the 3D axes
 
 # Add a color bar
 cbar = fig.colorbar(scatter, ax=ax, pad=0.1)
@@ -99,31 +177,30 @@ ax.set_zlim(z_min - margin * z_range, z_max + margin * z_range)
 # Add legend and title
 ax.legend()
 plt.title('3D Helix with Phase-Adjusted Model')
-
+plt.show()
 # Create 2D projections to visualize the phase adjustment
-fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+# fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
 # Plot angle vs z to show the phase adjustment
-ax1.scatter(angles_sorted, z_sorted, c='blue', s=15, alpha=0.7, label='Data')
-t_fine = np.linspace(0, 2*np.pi, 200)
-ax1.plot(t_fine, sine_model(t_fine, z_center_fit, z_amplitude_fit, phase_offset_fit), 
-         'r-', linewidth=2, label='Fitted Curve')
-ax1.set_xlabel('Angle (radians)')
-ax1.set_ylabel('z')
-ax1.set_title('z vs Angle (Phase Adjustment)')
-ax1.legend()
-ax1.set_xlim(0, 2*np.pi)
+# ax1.scatter(angles_sorted, z_sorted, c='blue', s=15, alpha=0.7, label='Data')
+# t_fine = np.linspace(0, 2*np.pi, 200)
+# ax1.plot(t_fine, sine_model(t_fine, z_center_fit, z_amplitude_fit, phase_offset_fit), 
+#          'r-', linewidth=2, label='Fitted Curve')
+# ax1.set_xlabel('Angle (radians)')
+# ax1.set_ylabel('z')
+# ax1.set_title('z vs Angle (Phase Adjustment)')
+# ax1.legend()
+# ax1.set_xlim(0, 2*np.pi)
 
 # kx-kz projection
-scatter2 = ax2.scatter(kx, kz, c=alpha, cmap=cm.plasma, s=20, alpha=0.8)
-# Project model onto kx-kz plane
-ax2.plot(x_model, z_model, 'r-', linewidth=2, alpha=0.7)
-ax2.set_xlabel('kx')
-ax2.set_ylabel('kz')
-ax2.set_xlim(x_min - margin * x_range, x_max + margin * x_range)
-ax2.set_ylim(z_min - margin * z_range, z_max + margin * z_range)
-ax2.set_title('kx-kz Projection with Phase-Adjusted Model')
-fig2.colorbar(scatter2, ax=ax2)
+# scatter2 = ax2.scatter(kx, kz, c=alpha, cmap=cm.plasma, s=20, alpha=0.8)
+# # Project model onto kx-kz plane
+# ax2.plot(x_model, z_model, 'r-', linewidth=2, alpha=0.7)
+# ax2.set_xlabel('kx')
+# ax2.set_ylabel('kz')
+# ax2.set_xlim(x_min - margin * x_range, x_max + margin * x_range)
+# ax2.set_ylim(z_min - margin * z_range, z_max + margin * z_range)
+# ax2.set_title('kx-kz Projection with Phase-Adjusted Model')
+# fig2.colorbar(scatter2, ax=ax2)
 
 plt.tight_layout()
-plt.show()

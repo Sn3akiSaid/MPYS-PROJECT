@@ -7,6 +7,7 @@ program generate_fermi
     use reading_module
     use fourier_module
     use perturbation
+    use create_mesh
    ! #include <mpif.h>
     Implicit None
 !--------Presets to be changed by User
@@ -41,7 +42,7 @@ program generate_fermi
     
     real*8 kx,ky,kz,&
            phase, dx, dy, dz,&
-           delkx, delky, delkz, bandgap,bandgapp,&
+            bandgap,bandgapp,&
            twopi,jk,a,b,a1,b1,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
            spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
@@ -162,7 +163,6 @@ lwork=max(1,2*nb-1)
 allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 ! allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 
-allocate(mesh(3, (2*np+1)**dim))
 !------ open gap file
     ! open(777,file='gap.dat',status='replace', position='append', action='write')
     ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
@@ -173,23 +173,8 @@ allocate(mesh(3, (2*np+1)**dim))
     ! open(120,file='FERMISURFACE.dat', status='new', position='append',action='write')
 
 !-------Generate Mesh
-    delkx = kbox_x/(2*np+1)
-    delky = kbox_y/(2*np+1)
-    delkz = kbox_z/(2*np+1)
-
-    j=0
-    do i = -np, np ! -np,np
-        do n = -np, np
-            do k = -np, np
-                j = j+1  ! Direct index calculation
-                ! Calculate coordinates directly
-                mesh(1, j) = i*delkx
-                mesh(2, j) = n*delky
-                mesh(3, j) = k*delkz
-            end do
-        end do
-    end do
-    mesh(3,:)=mesh(3,:)+0.5d0*bvec(3,3)
+    allocate(mesh(3, (2*np+1)**dim))
+    call Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, mesh, bvec)
 
     if (rank == 0) then
         write(*,*) "Total mesh points generated:", j

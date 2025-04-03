@@ -6,12 +6,13 @@ program generate_fermi
     use mpi
     use reading_module
     use fourier_module
+    use perturbation
    ! #include <mpif.h>
     Implicit None
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=20,npartitions=25,dim=3
+    integer,parameter::np=15,npartitions=10,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
@@ -19,7 +20,7 @@ program generate_fermi
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                      alpha_min = 0.77d0, alpha_max = 0.805d0 !18x18 range  perturbed range
+                      alpha_min = 0.805d0, alpha_max = 0.81d0 !18x18 range  perturbed range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -57,8 +58,7 @@ program generate_fermi
            part_time,part_time2
 
 
-    complex*16 sigx(2, 2), sigy(2, 2), sigz(2, 2),&
-               chi(2,1),chip(2,1),&
+    complex*16 chi(2,1),chip(2,1),&
                phi(3),phase_factor
 
     real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
@@ -106,23 +106,15 @@ program generate_fermi
     write(nnkp,'(2a,a,a)') trim(adjustl(hamil_dir)), trim(adjustl(prefix)), ".nnkp"
 !-----Define pi
     twopi=4.0d0*atan(1.0d0)*2.0d0
-!--------- Define Pauli Matrices sigma x,y,z
-  data sigx /(0d0,0d0),(1d0,0d0),(1d0, 0d0),( 0d0, 0d0)/
-  data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
-  data sigz /(1d0,0d0),(0d0,0d0),(0d0, 0d0),(-1d0, 0d0)/
+! !--------- Define Pauli Matrices sigma x,y,z
+!   data sigx /(0d0,0d0),(1d0,0d0),(1d0, 0d0),( 0d0, 0d0)/
+!   data sigy /(0d0,0d0),(0d0,1d0),(0d0,-1d0),( 0d0, 0d0)/
+!   data sigz /(1d0,0d0),(0d0,0d0),(0d0, 0d0),(-1d0, 0d0)/
 
 ! Only process 0 reads the input files
-  if (rank == 0) then
+    if (rank == 0) then
 !---------------  Read the vectors
-    open(98,file=trim(adjustl(nnkp)),err=333)
-111   read(98,'(a)')line
-    if(trim(adjustl(line)).ne."begin real_lattice") goto 111
-    read(98,*)avec
-    read(98,'(a)')line
-    read(98,'(a)')line
-    read(98,'(a)')line
-    read(98,*)bvec
-
+call read_lattice(nnkp, rank, avec, bvec, ierr)
 !------Broadcast necessary values to all processes
 call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
 call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
@@ -132,6 +124,7 @@ call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
       call read_header(hamil_file_topological, nb, nr_topological)
       write(*,*) nb,nr_topological
     endif
+
 call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 call MPI_BCAST(nr_trivial, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 call MPI_BCAST(nr_topological, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
@@ -169,14 +162,14 @@ lwork=max(1,2*nb-1)
 allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 ! allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 
-    allocate(mesh(3, (2*np+1)**dim))
+allocate(mesh(3, (2*np+1)**dim))
 !------ open gap file
     ! open(777,file='gap.dat',status='replace', position='append', action='write')
     ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
     ! if (ierr /= 0) then
     !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
     ! end if
-    open(110,file='perturbed.dat',status='replace', position='append', action='write')
+    open(110,file='perturbed.dat',status='old', position='append', action='write')
     ! open(120,file='FERMISURFACE.dat', status='new', position='append',action='write')
 
 !-------Generate Mesh
@@ -197,21 +190,14 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
         end do
     end do
     mesh(3,:)=mesh(3,:)+0.5d0*bvec(3,3)
+
     if (rank == 0) then
         write(*,*) "Total mesh points generated:", j
         write(*,*) "Expected mesh points:", (2*np+1)**dim
     endif
 !------ Magnetic Field
-    allocate(Hm(2,2),Hmag(nb,nb))
-    Hm = B_x*sigx + B_y*sigy + B_z*sigz
-!------ Turn Hm into an 18x18 to match Hk      
-    Hmag = (0d0, 0d0)
-    do i=1, nb/2
-          Hmag(i,i)=Hm(1,1)
-          Hmag(i,i+nb/2)=Hm(1,2)
-          Hmag(i+nb/2,i)=Hm(2,1)
-          Hmag(i+nb/2,i+nb/2)=Hm(2,2)
-    end do
+    allocate(Hm(2,2), Hmag(nb,nb))
+    call magnetic_field(nb, B_x, B_y, B_z, Hmag)
 !------ Fourrier transform H(R) to H(k)
     ! allocate(phases(nr, (np+1)**dim))
 
@@ -388,17 +374,17 @@ endif
 call MPI_FINALIZE(ierr)
 
 ! Skip error handling in non-root processes
-if (rank /= 0) then
-    goto 999
-endif
-!-------Errors
-333   write(*,'(3a)')'ERROR: input file "',trim(adjustl(nnkp)),'" not found'
-    stop
-444   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_trivial)),'" not found'
-    stop
-445   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_topological)),'" not found'
-    stop      
+! if (rank /= 0) then
+!     goto 999
+! endif
+! !-------Errors
+! 333   write(*,'(3a)')'ERROR: input file "',trim(adjustl(nnkp)),'" not found'
+!     stop
+! 444   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_trivial)),'" not found'
+!     stop
+! 445   write(*,'(3a)')'ERROR: input file "',trim(adjustl(hamil_file_topological)),'" not found'
+!     stop      
 
-999 continue
+! 999 continue
 !---------END
 end program generate_fermi

@@ -1,4 +1,5 @@
 module fourier_module
+  
   use mpi
   implicit none
   
@@ -12,6 +13,43 @@ module fourier_module
   real*8, parameter, private :: twopi = 4.0d0*atan(1.0d0)*2.0d0
   
 contains
+  subroutine inner_ft_optimized(k, nr, nb, ndeg, mesh, rvec, &
+                                Hamr_trivial, Hamr_topological, Hmag, alpha, &
+                                Hk_trivial, Hk_topological, H, rank, ierr)
+  implicit none
+
+  integer, intent(in) :: k, nr, nb, rank
+  integer, intent(in) :: ndeg(nr)
+  real*8, intent(in) :: mesh(3, *), rvec(3, nr), alpha
+  complex*16, intent(in) :: Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr)
+  complex*16, intent(in) :: Hmag(nb, nb)
+  ! Outputs
+  complex*16, intent(out) :: Hk_trivial(nb, nb), Hk_topological(nb, nb), H(nb, nb)
+  integer, intent(out) :: ierr
+  ! Local variables
+  integer :: j
+  real*8 :: phase
+  complex*16 :: phase_factor
+  complex*16 :: Hk(nb, nb)
+
+ ! Initialize accumulation arrays to zero
+    Hk_trivial = (0d0, 0d0)
+    Hk_topological = (0d0, 0d0)
+    
+    do j = 1, nr
+        phase = dot_product(mesh(:, k), rvec(:, j))
+        phase_factor = dcmplx(cos(phase), -sin(phase)) / float(ndeg(j))
+      !   phase_factor = phases(j, k)!!! CONT FROM HERE
+        Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
+        Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
+    end do
+    
+    ! Interpolate and add perturbation:
+    Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
+    H = Hk + Hmag
+    
+    ierr = 0
+  end subroutine inner_ft_optimized
   !--------------------------------------------------------------------
   ! Subroutine for the optimized Fourier transform (18x18 case)
   subroutine fourier_transform_optimized(np, dim, nr, nb, ndeg, mesh, rvec, &
@@ -32,11 +70,12 @@ contains
       complex*16, intent(inout) :: work(lwork)
       real*8, intent(inout) :: rwork(*)
       integer, intent(out) :: ierr
+
       ! Local variables:
-      integer :: k, j, kspace, info
-      real*8 :: phase
-      complex*16 :: phase_factor
-      complex*16, allocatable :: phases(:,:)
+      integer :: k, kspace, info, inner_ierr
+      ! real*8 :: phase
+      ! complex*16 :: phase_factor
+      ! complex*16, allocatable :: phases(:,:)
       complex*16, allocatable :: Hk_trivial(:,:), Hk_topological(:,:), Hk(:,:), H(:,:)
       
       kspace = (np+1)**dim
@@ -44,32 +83,19 @@ contains
       allocate(Hk_trivial(nb, nb), Hk_topological(nb, nb), Hk(nb, nb), H(nb, nb))
       ! Loop over partitions: accumulate the Fourier sums and compute eigenvalues
       do k = 1, kspace
-          ! Initialize accumulation arrays to zero
-          Hk_trivial = (0d0, 0d0)
-          Hk_topological = (0d0, 0d0)
-          
-          do j = 1, nr
-              phase = dot_product(mesh(:, k), rvec(:, j))
-              phase_factor = dcmplx(cos(phase), -sin(phase)) / float(ndeg(j))
-            !   phase_factor = phases(j, k)!!! CONT FROM HERE
-              Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
-              Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
-          end do
-          
-          ! Interpolate and add perturbation:
-          Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
-          H = Hk + Hmag
-          
-          ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
-          call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
-          call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
-          
-          if (info /= 0) then
-              if (rank == 0) then
-                  write(*,*) "ZHEEV failed with info =", info
-              end if
-              call MPI_ABORT(MPI_COMM_WORLD, info, ierr)
+
+        call inner_ft_optimized(k, nr, nb, ndeg, mesh, rvec, &
+                                Hamr_trivial, Hamr_topological, Hmag, alpha, &
+                                Hk_trivial, Hk_topological, H, rank, inner_ierr)         
+      
+          if (inner_ierr /= 0) then
+              ierr = inner_ierr
+              deallocate(Hk_trivial, Hk_topological, H)
+              return
           end if
+      ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
+      call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+      call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
       end do
       
       deallocate(Hk_trivial, Hk_topological, Hk, H)

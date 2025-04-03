@@ -6,10 +6,35 @@ module reading_module
   private
   
   ! Public interfaces
-  public :: read_optimized_hamiltonians, read_general_hamiltonians, read_header
+  public :: read_lattice, read_optimized_hamiltonians, read_general_hamiltonians, read_header
   
 contains
-  !--------------------------------------------------------------------
+  !--------------------------------------------------------------------!
+  subroutine read_lattice(nnkp, rank, avec, bvec, ierr)
+    implicit none
+    ! Inputs
+    character(len=*), intent(in) :: nnkp
+    integer, intent(in) :: rank
+    ! Outputs
+    real*8, intent(out) :: avec(3,3), bvec(3,3)
+    integer, intent(out) :: ierr
+    ! Local variables
+    character(len=512) :: line
+    
+    ! Initialize error code
+    ierr = 0
+!---------------  Read the vectors
+        open(98,file=trim(adjustl(nnkp)), status='old')
+111     read(98,'(a)')line
+        if(trim(adjustl(line)).ne."begin real_lattice") goto 111
+        read(98,*)avec
+        read(98,'(a)')line
+        read(98,'(a)')line
+        read(98,'(a)')line
+        read(98,*)bvec
+        close(98)
+
+end subroutine read_lattice
   ! Subroutine to read optimized Hamiltonians (18x18 case)
   subroutine read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr, &
                                         Hamr_trivial, Hamr_topological, rvec, ndeg, avec)

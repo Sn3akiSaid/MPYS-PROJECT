@@ -134,8 +134,7 @@ def map_alpha_to_curve(t_values, angles_source, alpha_source):
 alpha_model = map_alpha_to_curve(t, angles_selected_sorted, alpha_selected_sorted)
 norm = Normalize(vmin=alpha_min, vmax=alpha_max)
 
-colors_blue_to_red = [(0, 0, 1), (0.5, 0.5, 0.5), (1, 0, 0)]  # Blue -> Gray -> Red
-blue_red_cmap = LinearSegmentedColormap.from_list("BlueToRed", colors_blue_to_red)
+blue_red_cmap = LinearSegmentedColormap.from_list("BlueToRed", ["b","w","r"])
 
 # Plot the data points
 scatter = ax.scatter(kx_selected, ky_selected, kz_selected, 

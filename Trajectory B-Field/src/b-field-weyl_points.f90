@@ -11,7 +11,7 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=15,npartitions=10,dim=3
+    integer,parameter::np=20,npartitions=25,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
@@ -19,7 +19,7 @@ program generate_fermi
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                      alpha_min = 0.77d0, alpha_max = 0.815d0 !18x18 range
+                      alpha_min = 0.77d0, alpha_max = 0.805d0 !18x18 range  perturbed range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -75,9 +75,9 @@ program generate_fermi
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: kbox_x=0.12d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.16d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.05d0!z_min = -0.03d0, z_max = 0.03d0
+    real*8, parameter :: kbox_x=0.11d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.11d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.055d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -171,6 +171,13 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
     allocate(mesh(3, (2*np+1)**dim))
 !------ open gap file
+    ! open(777,file='gap.dat',status='replace', position='append', action='write')
+    ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
+    ! if (ierr /= 0) then
+    !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
+    ! end if
+    open(110,file='perturbed.dat',status='replace', position='append', action='write')
+    ! open(120,file='FERMISURFACE.dat', status='new', position='append',action='write')
 
 !-------Generate Mesh
     delkx = kbox_x/(2*np+1)
@@ -234,34 +241,30 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     !    ene=0d0
 
 ! !----- FOURIER TRANSFORM 
+
+!---4x4---!   
     !    call fourier_transform_general(2*np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
     !                                   rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
     !                                   Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
-
-       call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
-                                        Hamr_trivial, Hamr_topological, Hmag, alpha, &
-                                        enep, ene, work, lwork, rwork, rank, ierr)
-
-!----- END FOURIER TRANSFORM
-
-    ! open(777,file='gap.dat',status='replace', position='append', action='write')
-    ! open(100,file='trajectory_4_0.001.dat',status='replace', position='append', action='write', iostat=ierr)
-    ! if (ierr /= 0) then
-    !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
-    ! end if
-    open(110,file='NEWPERTURBED.dat',status='old', position='append', action='write')
-    open(120,file='FERMISURFACE.dat', status='new', position='appends',action='write')
-!------Band gap and Fermi energy calculations
-    
-    !---4x4---!
     !    gap_min(ipart)=abs(minval(ene(3,:))-maxval(ene(2,:))) !Unperturbed Case
     !    gapp_min(ipart)=abs(minval(enep(3,:))-maxval(enep(2,:))) !Perturbed Case
     !    ef(ipart)=(minval(ene(3,:))+maxval(ene(2,:)))/2d0 
 
-    !---18x18---!
+!---18x18---!
+       call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
+                                        Hamr_trivial, Hamr_topological, Hmag, alpha, &
+                                        enep, ene, work, lwork, rwork, rank, ierr)
     !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
        gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
     !    ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
+!----- END FOURIER TRANSFORM
+
+!------Band gap and Fermi energy calculations
+    
+   
+
+    
+
 
 
 !------Export data-------!
@@ -281,16 +284,20 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 !-------Write Weyl points to file
 !-------Uncoment depending on the Hamiltonian used, or if perturbation is added
             do k=1,(2*np+1)**dim
-                ! bandgap=ene(3,k)-ene(2,k)
-                ! bandgapp=enep(3,k)-enep(2,k)
-                ! bandgap=ene(13,k)-ene(12,k)
-                bandgapp=enep(13,k)-enep(12,k)
+                !----4x4----!
+                ! bandgap=ene(3,k)-ene(2,k) ! Unperturbed
+                ! bandgapp=enep(3,k)-enep(2,k) ! Perturbed
 
-                ! print*, bandgap
-                ! if (abs(bandgap-(gap_min(ipart))) .lt. 0.01d0) then
+                !-------18x18-------!
+                ! bandgap=ene(13,k)-ene(12,k) ! Unperturbed
+                bandgapp=enep(13,k)-enep(12,k) ! Perturbed
+
+                !---------UNPERTURBED--------!
+                ! if (abs(bandgap-(gap_min(ipart))) .lt. 0.001d0) then
                 !     print*, abs(bandgap-(gap_min(ipart)))
-                !     write(100, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgap-(gap_min(ipart)))!, gap_min(ipart)
+                !     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgap-(gap_min(ipart)))!, gap_min(ipart)
                 ! endif
+                !---------PERTURBED--------!
                 if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.001d0) then
                     print*, abs(bandgapp-(gapp_min(ipart)))
                     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgapp-(gapp_min(ipart)))!, gap_min(ipart)

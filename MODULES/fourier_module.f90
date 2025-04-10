@@ -7,7 +7,7 @@ module fourier_module
   private
   
   ! Public interfaces
-  public :: fourier_transform_optimized, fourier_transform_general
+  public :: fourier_transform_optimized, fourier_transform_general, inner_ft_optimized
   
   ! Module-level constants
   real*8, parameter, private :: twopi = 4.0d0*atan(1.0d0)*2.0d0
@@ -15,7 +15,7 @@ module fourier_module
 contains
   subroutine inner_ft_optimized(k, nr, nb, ndeg, mesh, rvec, &
                                 Hamr_trivial, Hamr_topological, Hmag, alpha, &
-                                Hk_trivial, Hk_topological, H, rank, ierr)
+                                Hk_trivial, Hk_topological, H, Hk, rank, ierr)
   implicit none
 
   integer, intent(in) :: k, nr, nb, rank
@@ -24,13 +24,13 @@ contains
   complex*16, intent(in) :: Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr)
   complex*16, intent(in) :: Hmag(nb, nb)
   ! Outputs
-  complex*16, intent(out) :: Hk_trivial(nb, nb), Hk_topological(nb, nb), H(nb, nb)
+  complex*16, intent(out) :: Hk_trivial(nb, nb), Hk_topological(nb, nb), H(nb, nb), Hk(nb, nb)
   integer, intent(out) :: ierr
   ! Local variables
   integer :: j
   real*8 :: phase
   complex*16 :: phase_factor
-  complex*16 :: Hk(nb, nb)
+  ! complex*16 :: Hk(nb, nb)
 
  ! Initialize accumulation arrays to zero
     Hk_trivial = (0d0, 0d0)
@@ -86,15 +86,17 @@ contains
 
         call inner_ft_optimized(k, nr, nb, ndeg, mesh, rvec, &
                                 Hamr_trivial, Hamr_topological, Hmag, alpha, &
-                                Hk_trivial, Hk_topological, H, rank, inner_ierr)         
+                                Hk_trivial, Hk_topological, H, Hk, rank, inner_ierr)         
       
           if (inner_ierr /= 0) then
               ierr = inner_ierr
               deallocate(Hk_trivial, Hk_topological, H)
               return
           end if
+
+      
       ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
-      call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+      ! call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
       call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
       end do
       

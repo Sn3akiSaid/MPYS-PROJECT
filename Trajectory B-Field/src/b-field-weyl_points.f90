@@ -183,6 +183,8 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 !------ Magnetic Field
     allocate(Hm(2,2), Hmag(nb,nb))
     call magnetic_field(nb, B_x, B_y, B_z, Hmag)
+
+!----------- BEGIN INTERPOLATION -----------! 
 !------ Fourrier transform H(R) to H(k)
     ! allocate(phases(nr, (np+1)**dim))
 
@@ -225,6 +227,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
        call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
                                         Hamr_trivial, Hamr_topological, Hmag, alpha, &
                                         enep, ene, work, lwork, rwork, rank, ierr)
+
     !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
        gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
     !    ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0

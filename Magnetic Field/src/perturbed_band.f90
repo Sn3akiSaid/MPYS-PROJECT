@@ -8,9 +8,9 @@ Program interpolate_topology
     Implicit None
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
-    integer,parameter::nkpath=3,np=50,npartitions=20
+    integer,parameter::nkpath=3,np=500,npartitions=1
 !---Magnetic Field to be modified by User
-    real*8,parameter::B_x=0d0, B_y=0.05d0, B_z=0d0
+    real*8,parameter::B_x=0d0, B_y=0.1d0, B_z=0d0
 !------------------------------------------------------
     integer ik, ipart, is, ib
     real*8 alpha,ef(npartitions),gap(npartitions)!,write_values(12:13)!,&
@@ -60,18 +60,19 @@ Program interpolate_topology
     
     read(98,*)bvec
 !---------------kpath
-!ky
-    data kpath(:,1) /     0.1d0,  -0.2d0,   0.5d0/  !L
-    data kpath(:,2) /     0.0d0,   0.0d0,   0.5d0/  !A
-    data kpath(:,3) /    -0.1d0,   0.2d0,   0.5d0/  !H
-! !kx
-!     data kpath(:,1) /    -0.1d0,   0.0d0,    0.5d0/  !L
-!     data kpath(:,2) /     0.0d0,   0.0d0,    0.5d0/  !A
-!     data kpath(:,3) /     0.1d0,   0.0d0,    0.5d0/  !H
-! !LAH
-!     data kpath(:,1) /     -0.1d0,  0.1d0,        0.5d0/  !L
-!     data kpath(:,2) /     0.0d0,  0.0d0,    0.5d0/  !A
-!     data kpath(:,3) /     0.1d0,  0.1d0,           0.5d0/  !H
+!  ky
+    ! data kpath(:,1) /     0.1d0,  -0.2d0,   0.5d0/  
+    ! data kpath(:,2) /     0.0d0,   0.0d0,   0.5d0/  
+    ! data kpath(:,3) /    -0.1d0,   0.2d0,   0.5d0/  
+!  kx
+    ! data kpath(:,1) /    -0.1d0,   0.0d0,    0.5d0/  
+    ! data kpath(:,2) /     0.0d0,   0.0d0,    0.5d0/  
+    ! data kpath(:,3) /     0.1d0,   0.0d0,    0.5d0/
+  
+!  LAH
+    data kpath(:,1) /    -0.5d0,    0.5d0,    0.5d0/  !L
+    data kpath(:,2) /     0.0d0,    0.0d0,    0.5d0/  !A
+    data kpath(:,3) /     third,    third,    0.5d0/  !H
     
     ! data kpath(:,1) /     0.035d0,    0.011d0,    0.5d0/  !L
     ! data kpath(:,2) /     0.0505d0,   0.0164d0,    0.5d0/  !A
@@ -178,7 +179,8 @@ Program interpolate_topology
     ene=0d0
     do ipart=1,npartitions
        write(*,'(a,i5)') 'Partition=',ipart
-       alpha=float(ipart-1)/float(npartitions-1)
+    !    alpha=float(ipart-1)/float(npartitions-1)
+       alpha = 0.7777
        do k=1,nk
               HK_trivial=(0d0,0d0)
           HK_topological=(0d0,0d0)
@@ -220,6 +222,8 @@ Program interpolate_topology
                   spin_x = matmul(conjg(transpose(chi)),matmul(sigx, chi))
                   spin_y = matmul(conjg(transpose(chi)),matmul(sigy, chi))
                   spin_z = matmul(conjg(transpose(chi)),matmul(sigz, chi))
+
+
                   spin(1,ib,k)=spin(1,ib,k)+spin_x(1,1)
                   spin(2,ib,k)=spin(2,ib,k)+spin_y(1,1)
                   spin(3,ib,k)=spin(3,ib,k)+spin_z(1,1)
@@ -233,7 +237,7 @@ Program interpolate_topology
                   spinp(3,ib,k)=spinp(3,ib,k)+spin_zp(1,1)
                   
             enddo
-      enddo
+        enddo
        enddo
        
 !------calcualte gap and Fermi level
@@ -242,23 +246,17 @@ Program interpolate_topology
 
 !------export eigenvalus 
        write(partnumber,'(i5)') ipart
-       write(line,'(3a)') 'band_partition_',trim(adjustl(partnumber)),'.dat' 
+       write(line,'(3a)') 'band_partition_LAH_WSM_',trim(adjustl(partnumber)),'.dat' 
        open(100,file=trim(line))
        !open(200,file="unperturbed_spins.dat")
       ! open(300,file="perturbed_spins.dat")
        do i = 11, 14
           do k=1,nk
-         !       ! Check if ene(i,k) - ef(ipart) is less than 0.01 and set it to 0 if true
-          !      if (abs(ene(i,k) - ef(ipart)) .lt. 0.01) then
-           !     write_values = 0.0
-            !    else
-             !   write_values = ene(i,k) - ef(ipart)
-              !  end if
                 ! Write the values to the file
-                write(100, '(5(x,f12.6))') xk(k), ene(i,k)-ef(ipart),&
-                                           spin(2,i,k)/(sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)),&
+                write(100, '(10(x,f12.6))') xk(k), ene(i,k)-ef(ipart),&
+                                           spin(1:3,i,k)/(sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)),&
                                            enep(i,k)-ef(ipart),&
-                                           spinp(2,i,k)/(sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2))
+                                           spinp(1:3,i,k)/(sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2))
                 !write(200,'(4(x,f12.6))') spin(3,i,k),sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2)
                 !write(300,'(4(x,f12.6))') spinp(3,i,k),sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2)
 

@@ -3,7 +3,7 @@
 set terminal wxt persist
 #set terminal pdfcairo enhanced font "Times New Roman" transparent fontscale 0.5 size 10.00in, 10.00in
 set view 75, 120, 0.5, 1
-set output "3D_energy_plot.pdf"
+# set output "3D_energy_plot.pdf"
 set zrange [ -0.6 : 0.7 ]
 set xrange [ -0.4 : 0.4 ]
 set yrange [ -0.4 : 0.4 ]

@@ -39,8 +39,8 @@ ax.tick_params(axis='both', which='major', labelsize=14, pad=10)  # Increased fo
 # Create the contour plot with custom levels
 contour = ax.contour(grid_x, grid_y, grid_z, levels=energy_levels, colors=custom_cmap, linewidths = 4)
 
-# energy_labels = ['0', '10', '20', '50', '120', '200']
-energy_labels = ['0', '10', '20', '70', '150', '220']
+# energy_labels = ['0', '10', '20', '50', '120', '200'] #Unperturbed
+energy_labels = ['0', '10', '20', '70', '150', '220'] #Perturbed
 
 cbar = fig.colorbar(contour, ax=ax, location='top',orientation='horizontal', shrink=0.75)
 cbar.set_ticklabels(energy_labels)

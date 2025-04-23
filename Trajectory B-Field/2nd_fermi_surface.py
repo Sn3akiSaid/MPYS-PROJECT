@@ -5,19 +5,23 @@ print(pv.__version__)
 # -------------------------------------------------
 # 1. LOAD THE DATA
 # -------------------------------------------------
-data_file = 'k_surface_fermi_energies_By_0.01_part_1.dat'
+# data_file = 'k_surface_fermi_energies_By_0.01_part_1.dat'
+# data_file = 'fermi_surface_energies_By_WSM_unfiltered.dat'
+data_file = 'arounddirac.dat'
 data = np.loadtxt(data_file)
 kx = data[:, 0]
 ky = data[:, 1]
 kz = data[:, 2]
-energy = data[:, 3]
-energy13 = data[:, 4]
+energy = data[:, 4] # Unperturbed band 13
+energy13 = data[:, 4] # (Pe)unperturbed
 
 # -------------------------------------------------
-# 2. DEFINE FERMI ENERGY WITH PHYSICAL MEANING
+# 2. DEFINE FERMI ENERGY
 # -------------------------------------------------
-unperturbed_min = np.min(energy13)
-energy_offset = 0.0062  # Energy offset from band minimum (in eV)
+unperturbed_min = np.min(energy13) # Minimum of Bottom Conduction Band
+# energy_offset = 0.0062  # Energy offset from band minimum (in eV)
+energy_offset = 0.001  # Energy offset from band minimum (in eV)
+
 fermi_energy = unperturbed_min + energy_offset
 # fermi_energy=4.18903772
 print(f"Unperturbed band minimum: {unperturbed_min:.6f} eV")
@@ -25,7 +29,7 @@ print(f"Fermi energy set to: {fermi_energy:.6f} eV")
 
 # Filter points near Fermi energy for visualization
 # energy_range = np.max(energy) - np.min(energy)
-tolerance = 0.05
+tolerance = 0.0001
 lb = fermi_energy - tolerance
 ub = fermi_energy + tolerance
 mask = (energy >= lb) & (energy <= ub)
@@ -37,22 +41,22 @@ kz_filtered = kz[mask]
 # 3. CREATE SIMPLE GRID & INTERPOLATE
 # -------------------------------------------------
 # Keep dimension at 10 as requested
-dimension = 100
+dimension = 150
 nx, ny, nz = dimension, dimension, dimension
 
 # # Create a grid with slight expansion 
-# x_lin = np.linspace(kx_filtered.min(), kx_filtered.max(), nx)
-# y_lin = np.linspace(ky_filtered.min(), ky_filtered.max(), ny)
-# z_lin = np.linspace(kz_filtered.min(), kz_filtered.max(), nz)
-
-x_lin = np.linspace(-0.08, 0.08, nx)
-y_lin = np.linspace(-0.08, 0.08,  ny)
-z_lin = np.linspace(0.4,0.51, nz)
+x_lin = np.linspace(kx_filtered.min(), kx_filtered.max(), nx)
+y_lin = np.linspace(ky_filtered.min(), ky_filtered.max(), ny)
+z_lin = np.linspace(kz_filtered.min(), kz_filtered.max(), nz)
+print(np.min(energy),np.max(energy))
+# x_lin = np.linspace(np.min(kx), np.max(kx), nx)
+# y_lin = np.linspace(np.min(ky), np.max(ky), ny)
+# z_lin = np.linspace(np.min(kz), np.max(kz), nz)
 X, Y, Z = np.meshgrid(x_lin, y_lin, z_lin, indexing='ij')
 # Basic linear interpolation - use simple approach for speed
 print("Performing interpolation...")
 points = np.column_stack((kx, ky, kz))
-grid_energy = griddata(points, energy, (X, Y, Z), method='nearest')
+grid_energy = griddata(points, energy, (X, Y, Z), method='linear')
 grid_energy = np.nan_to_num(grid_energy, nan=unperturbed_min)
 
 

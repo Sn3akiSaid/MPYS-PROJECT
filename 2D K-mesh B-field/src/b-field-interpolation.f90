@@ -13,7 +13,7 @@ program interpolate_topology
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=350,npartitions=1,dim=2
+    integer,parameter::np=50,npartitions=1,dim=2
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
@@ -29,7 +29,7 @@ program interpolate_topology
     
     !---------Variable declarations
     character(len=80) :: hamil_file_trivial, hamil_file_topological, nnkp, line, partnumber
-    character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 18x18/'  ! 4x4 Hamiltonian directory
+    character(len=200) :: hamil_dir = '../Hamiltonians 18x18/'  ! 4x4 Hamiltonian directory
     
     integer :: ik, ipart, ib, is, i, j, k, n, nr_trivial, nr_topological, nb, i1, i2, lwork, info, &
                o, p, j1, j2, total_pairs, temp_index
@@ -65,8 +65,8 @@ program interpolate_topology
                               Hamr_trivial(:,:,:), Hamr_topological(:,:,:), &
                               work(:)
     
-    real*8, parameter :: kbox_x=0.2d0,&
-                         kbox_y=0.2d0
+    real*8, parameter :: kbox_x=0.04d0,&
+                         kbox_y=0.04d0
     
     integer, allocatable :: indices(:)
     
@@ -196,7 +196,7 @@ program interpolate_topology
           endif
         !  alpha=float(ipart-1)/float(npartitions-1)
         !   alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
-          alpha = 0.78d0
+          alpha = 0.7952d0
           if (rank == 0) then
               write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
           endif
@@ -209,7 +209,7 @@ program interpolate_topology
         !  call fourier_transform_general(np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
         !  rvec_trivial, rvec_topological, Hamr_trivial, Hamr_topological,&
         !  Hmag, alpha, enep, ene, work, lwork, rwork, rank, ierr)
-        do k = 1, (2*np+1)**dim
+        do k=1, (2*np+1)**dim
 
          call inner_ft_optimized(k, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
                                  Hamr_trivial, Hamr_topological, Hmag, alpha, &
@@ -217,29 +217,29 @@ program interpolate_topology
 
     	 call zheev('V', 'U', nb, H, nb, ene(:, k), work, lwork, rwork, info)
 
-         do ib=1,nb
-                 do is=1,nb/2
-                    !    chi(1,1) = Hk(is     ,ib) 
-                    !    chi(2,1) = Hk(is+nb/2,ib)
-                       chip(1,1) = H(is     ,ib) 
-                       chip(2,1) = H(is+nb/2,ib)
+        !  do ib=1,nb
+        !          do is=1,nb/2
+        !             !    chi(1,1) = Hk(is     ,ib) 
+        !             !    chi(2,1) = Hk(is+nb/2,ib)
+        !                chip(1,1) = H(is     ,ib) 
+        !                chip(2,1) = H(is+nb/2,ib)
                         
-                        ! spin_x = matmul(conjg(transpose(chi)),matmul(sigx, chi))
-                        ! spin_y = matmul(conjg(transpose(chi)),matmul(sigy, chi))
-                        ! spin_z = matmul(conjg(transpose(chi)),matmul(sigz, chi))
-                        ! spin(1,ib,k)=spin(1,ib,k)+real(spin_x(1,1))
-                        ! spin(2,ib,k)=spin(2,ib,k)+real(spin_y(1,1))
-                        ! spin(3,ib,k)=spin(3,ib,k)+real(spin_z(1,1))
-                        ! Calculate spins for Perturbed Hamiltonian
-                        spin_xp = matmul(conjg(transpose(chip)),matmul(sigx, chip))
-                        spin_yp = matmul(conjg(transpose(chip)),matmul(sigy, chip))
-                        spin_zp = matmul(conjg(transpose(chip)),matmul(sigz, chip))
+        !                 ! spin_x = matmul(conjg(transpose(chi)),matmul(sigx, chi))
+        !                 ! spin_y = matmul(conjg(transpose(chi)),matmul(sigy, chi))
+        !                 ! spin_z = matmul(conjg(transpose(chi)),matmul(sigz, chi))
+        !                 ! spin(1,ib,k)=spin(1,ib,k)+real(spin_x(1,1))
+        !                 ! spin(2,ib,k)=spin(2,ib,k)+real(spin_y(1,1))
+        !                 ! spin(3,ib,k)=spin(3,ib,k)+real(spin_z(1,1))
+        !                 ! Calculate spins for Perturbed Hamiltonian
+        !                 spin_xp = matmul(conjg(transpose(chip)),matmul(sigx, chip))
+        !                 spin_yp = matmul(conjg(transpose(chip)),matmul(sigy, chip))
+        !                 spin_zp = matmul(conjg(transpose(chip)),matmul(sigz, chip))
       
-                        spinp(1,ib,k)=spinp(1,ib,k)+spin_xp(1,1)
-                        spinp(2,ib,k)=spinp(2,ib,k)+spin_yp(1,1)
-                        spinp(3,ib,k)=spinp(3,ib,k)+spin_zp(1,1)
-                 enddo
-            enddo
+        !                 spinp(1,ib,k)=spinp(1,ib,k)+spin_xp(1,1)
+        !                 spinp(2,ib,k)=spinp(2,ib,k)+spin_yp(1,1)
+        !                 spinp(3,ib,k)=spinp(3,ib,k)+spin_zp(1,1)
+        !          enddo
+        !     enddo
 
         enddo
 
@@ -259,12 +259,12 @@ program interpolate_topology
            ! Only rank 0 writes output files
       if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
           write(partnumber,'(i5)') ipart
-          write(line,'(3a)') 'NewDataWSMPerturbed',trim(adjustl(partnumber)),'.dat' 
+          write(line,'(3a)') 'arounddiracpoint',trim(adjustl(partnumber)),'.dat' 
           open(100,file=trim(line))
         ! do i = 11, 14
             do k=1,(2*np+1)**dim
-                  write(100,'(18(x,f12.6))') mesh(1:2,k), (ene(i,k),&
-                                             spin(1:3,i,k)/sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2), i=11,14)!,&!need to minimize the energy wrt fermi energy
+                  write(100,'(4(x,f12.6))') mesh(1:2,k), ene(12:13,k)!,&
+                                            !  spin(1:3,i,k)/sqrt(spin(1,i,k)**2 +spin(2,i,k)**2 +spin(3,i,k)**2), i=12,13)!,&!need to minimize the energy wrt fermi energy
                                             !  spinp(1:3,i,k)/sqrt(spinp(1,i,k)**2 +spinp(2,i,k)**2 +spinp(3,i,k)**2) !This now writes into the files the coordinates as a function of the TCB and BCB energy difference
                 !   write(200,'(3(x,f12.6))') mesh(1:2,k),ene(i,k)
             enddo

@@ -4,18 +4,19 @@ module create_mesh
 
   private
 
-  public :: Lattice3D, Lattice2D
+  public :: Lattice3D, Lattice2D, SpecificLattice
 
 contains
 
-  subroutine Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, mesh, bvec)
+  subroutine Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, delkx, delky, delkz, mesh, bvec, j)
     implicit none
     integer, intent(in) :: np, dim
     real*8, intent(in) :: kbox_x, kbox_y, kbox_z, bvec(3,3)
-    real*8, intent(out) :: mesh(3, (2*np+1)**dim)
+    real*8, intent(out) :: delkx, delky, delkz, &
+                           mesh(3, (2*np+1)**dim)
 
-    integer j, i, n, k
-    real*8 delkx, delky, delkz
+    integer i, n, k
+    integer, intent(out) :: j
 
     delkx = kbox_x/(2*np+1)
     delky = kbox_y/(2*np+1)
@@ -27,14 +28,53 @@ contains
             do k = -np, np
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                mesh(1, j) = i*delkx
-                mesh(2, j) = n*delky
-                mesh(3, j) = k*delkz
+                mesh(1, j) = i*delkx + 0.049d0
+                mesh(2, j) = n*delky + 0.030d0
+                mesh(3, j) = k*delkz + 0.5d0*bvec(3,3)
             end do
         end do
     end do
-    mesh(3,:)=mesh(3,:)+0.5d0*bvec(3,3)
+    ! mesh(3,:)=mesh(3,:)
   end subroutine Lattice3D
+
+  subroutine SpecificLattice(mesh, np, kx_min, kx_max, ky_min, ky_max, kz_min, kz_max, bvec, j)
+    implicit none
+    
+    ! Parameters
+    integer, intent(in) :: np           ! Number of points per dimension     
+    real(8), intent(in) :: bvec(3,3)
+    real(8), intent(in) :: kx_min, kx_max        ! X-bounds
+    real(8), intent(in) :: ky_min, ky_max        ! Y-bounds
+    real(8), intent(in) :: kz_min, kz_max        ! Z-bounds
+    real(8), intent(out) :: mesh(3, (2*np+1)**3) ! Output mesh
+    
+    ! Local variables
+    integer :: i, n, k
+    integer, intent(out) :: j
+    real(8) :: delkx, delky, delkz
+    
+    ! Calculate step sizes
+    delkx = (kx_max - kx_min) / (2*np)
+    delky = (ky_max - ky_min) / (2*np)
+    delkz = (kz_max - kz_min) / (2*np)
+    
+    ! Create the mesh
+    j = 0
+    do i = -np, np 
+        do n = -np, np
+            do k = -np, np
+                j = j + 1
+                ! Calculate coordinates directly with the specified bounds
+                mesh(1, j) = kx_min + (i + np) * delkx
+                mesh(2, j) = ky_min + (n + np) * delky
+                mesh(3, j) = kz_min + (k + np) * delkz
+            end do
+        end do
+    end do
+    
+    ! Apply any additional transformations if needed
+    ! mesh(3,:) = mesh(3,:) + 0.5d0*bvec(3,3)
+  end subroutine SpecificLattice
 
   subroutine Lattice2D(np, dim, kbox_x, kbox_y, mesh, bvec)
     implicit none
@@ -53,8 +93,8 @@ contains
         do n = -np, np
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                mesh(1, j) = i*delkx
-                mesh(2, j) = n*delky
+                mesh(1, j) = i*delkx + 0.03d0
+                mesh(2, j) = n*delky + 0.04d0
                 mesh(3, j) = 0.5d0*bvec(3,3)
         end do
     end do

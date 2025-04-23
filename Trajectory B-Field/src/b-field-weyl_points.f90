@@ -13,15 +13,15 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=15,npartitions=10,dim=3
+    integer,parameter::np=8,npartitions=1,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
-    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0,& !Run again at B_y=0.05-0.06 to see the gap close
+    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0, dk = 0.0000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                      alpha_min = 0.805d0, alpha_max = 0.81d0 !18x18 range  perturbed range
+                    !   alpha_min = 0.805d0, alpha_max = 0.81d0 !18x18 range  perturbed range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -32,7 +32,7 @@ program generate_fermi
     character(len=200) :: hamil_dir = '../Hamiltonians 18x18/'
 
     integer ik, ipart, ib, is,&
-            i,j,k,&
+            i,j,k,kx,ky,kz,&
             n,nr_trivial, nr_topological,nb,&
             i1,i2,&
             lwork,info,&
@@ -40,9 +40,8 @@ program generate_fermi
             total_pairs,&
             temp_index
     
-    real*8 kx,ky,kz,&
-           phase, dx, dy, dz,&
-            bandgap,bandgapp,&
+    real*8 phase, dx, dy, dz,&
+           bandgap,bandgapp,&
            twopi,jk,a,b,a1,b1,&
            spin_x(1,1),spin_y(1,1),spin_z(1,1),&
            spin_xp(1,1),spin_yp(1,1),spin_zp(1,1),&
@@ -56,11 +55,12 @@ program generate_fermi
            kmesh(np,np),&
            mesh_kx(3,np, np), mesh_ky(3,np, np),&
            mesh_gap(3, np**2),&
+           delkx, delky, delkz,&
            part_time,part_time2
 
 
     complex*16 chi(2,1),chip(2,1),&
-               phi(3),phase_factor
+               phi(3),phase_factor,overlap
 
     real*8,dimension(npartitions) :: min_eigenvalue, alpha_values
     
@@ -68,21 +68,31 @@ program generate_fermi
 
     real*8,allocatable:: phases(:,:),rvec_trivial(:,:),rvec_topological(:,:),&
                          ene(:,:),enep(:,:),&
+												 ene_step(:,:),&
                          rwork(:),rvec(:,:),&
-                         spin(:,:,:),spinp(:,:,:)
+                         spin(:,:,:),spinp(:,:,:), magnitude_field(:,:,:)
                          
     complex*16,allocatable:: H(:,:), Hk(:,:), Hm(:,:), Hmag(:,:),&
+														 H_step(:,:),Hk_step(:,:),&
+														 u0(:), u1(:), &
+														 connection(:,:,:,:),curvature(:,:,:,:),&
                              HK_trivial(:,:), HK_topological(:,:),&
                              Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                              work(:)
 
-    real*8, parameter :: kbox_x=0.11d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.11d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.055d0!z_min = -0.03d0, z_max = 0.03d0
+    ! real*8, parameter :: dk=0.000001d0
+    !----Box for weyl point----!
+    real*8, parameter :: kbox_x=0.02d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.03d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.055d0
+
+    ! real*8, parameter :: kbox_x=0.135d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+    !                      kbox_y=0.135d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+    !                      kbox_z=0.055d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
-    real*8, dimension(:,:), allocatable :: mesh
+    real*8, dimension(:,:), allocatable :: mesh, stepmesh
     !complex*16,dimension(2,2) :: sigx(2,2),sigy(2,2),sigz(2,2)
 
 
@@ -113,44 +123,45 @@ program generate_fermi
 !   data sigz /(1d0,0d0),(0d0,0d0),(0d0, 0d0),(-1d0, 0d0)/
 
 ! Only process 0 reads the input files
-    if (rank == 0) then
+  if (rank == 0) then
 !---------------  Read the vectors
-call read_lattice(nnkp, rank, avec, bvec, ierr)
+		call read_lattice(nnkp, rank, avec, bvec, ierr)
 !------Broadcast necessary values to all processes
-call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+		call MPI_BCAST(avec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
+		call MPI_BCAST(bvec, 9, MPI_DOUBLE_PRECISION, 0, MPI_COMM_WORLD, ierr)
 
-      call read_header(hamil_file_trivial, nb, nr_trivial)
+    call read_header(hamil_file_trivial, nb, nr_trivial)
       write(*,*) nb,nr_trivial
-      call read_header(hamil_file_topological, nb, nr_topological)
+    call read_header(hamil_file_topological, nb, nr_topological)
       write(*,*) nb,nr_topological
-    endif
+  endif
 
-call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(nr_trivial, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
-call MPI_BCAST(nr_topological, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+	call MPI_BCAST(nb, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+	call MPI_BCAST(nr_trivial, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
+	call MPI_BCAST(nr_topological, 1, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
 
-allocate(rvec_trivial(3, nr_trivial), rvec_topological(3, nr_topological))
-allocate(Hamr_trivial(nb, nb, nr_trivial), Hamr_topological(nb, nb, nr_topological))
-allocate(Hk_topological(nb,nb),Hk_trivial(nb,nb))
-allocate(H(nb,nb),Hk(nb,nb))
-allocate(ndeg_trivial(nr_trivial),ndeg_topological(nr_topological))
-
+	allocate(rvec_trivial(3, nr_trivial), rvec_topological(3, nr_topological))
+	allocate(Hamr_trivial(nb, nb, nr_trivial), Hamr_topological(nb, nb, nr_topological))
+	allocate(Hk_topological(nb,nb),Hk_trivial(nb,nb),u0(nb), u1(nb))
+	allocate(H(nb,nb),Hk(nb,nb),H_step(nb,nb),Hk_step(nb,nb))
+	allocate(ndeg_trivial(nr_trivial),ndeg_topological(nr_topological))
 
 ! Only rank 0 reads the Hamiltonian data
-    if (rank == 0) then
-        if (useOptimized) then
-            if (rank == 0) then
-                call read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, &
-                Hamr_trivial, Hamr_topological, rvec_trivial, ndeg_trivial, avec)
-                rvec_topological = rvec_trivial
-            end if
-            else
-                call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, nr_topological, &
-                Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, ndeg_trivial, ndeg_topological, avec)
-            endif
-        endif
-allocate(enep(nb, (2*np+1)**dim), ene(nb, (2*np+1)**dim))
+  if (rank == 0) then
+    if (useOptimized) then
+      if (rank == 0) then
+        call read_optimized_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, &
+                                       	 Hamr_trivial, Hamr_topological, rvec_trivial, ndeg_trivial, avec)
+        rvec_topological = rvec_trivial
+      end if
+    else
+      call read_general_hamiltonians(hamil_file_trivial, hamil_file_topological, nb, nr_trivial, nr_topological, &
+                                    Hamr_trivial, Hamr_topological, rvec_trivial, rvec_topological, &
+                                    ndeg_trivial, ndeg_topological, avec)
+    endif
+  endif
+
+	allocate(enep(nb, (2*np+1)**dim), ene(nb, (2*np+1)**dim), ene_step(nb, (2*np+1)**dim))
 ! Broadcast the read data to all processes
     call MPI_BCAST(ndeg_trivial, nr_trivial, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(ndeg_topological, nr_topological, MPI_INTEGER, 0, MPI_COMM_WORLD, ierr)
@@ -159,8 +170,8 @@ allocate(enep(nb, (2*np+1)**dim), ene(nb, (2*np+1)**dim))
     call MPI_BCAST(hamr_trivial, nb*nb*nr_trivial, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
     call MPI_BCAST(hamr_topological, nb*nb*nr_topological, MPI_DOUBLE_COMPLEX, 0, MPI_COMM_WORLD, ierr)
 !------ LAPACK-related array allocations
-lwork=max(1,2*nb-1)
-allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
+	lwork=max(1,2*nb-1)
+	allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 ! allocate(spin(3,nb,(np+1)**dim),spinp(3,nb,(np+1)**dim))
 
 !------ open gap file
@@ -169,20 +180,27 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     ! if (ierr /= 0) then
     !     open(100, file='trajectory_4_0.001.dat', status='new', action='write')
     ! end if
-    open(110,file='perturbed.dat',status='old', position='append', action='write')
+    ! open(110,file='perturbed.dat',status='old', position='append', action='write')
     ! open(120,file='FERMISURFACE.dat', status='new', position='append',action='write')
 
 !-------Generate Mesh
-    allocate(mesh(3, (2*np+1)**dim))
-    call Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, mesh, bvec)
+  allocate(mesh(3, (2*np+1)**dim))
+  allocate(stepmesh(3, (2*np+1)**dim))
+	allocate(connection(3, 2*np+1, 2*np+1, 2*np+1))
+	allocate(curvature(3, 2*np+1, 2*np+1, 2*np+1))
+	allocate(magnitude_field(2*np, 2*np, 2*np))
+  
+	call Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, delkx, delky, delkz, mesh, bvec, j)
+    ! call SpecificLattice(mesh, np, -0.05d0, 0.05d0, 0.05d0, 0.05d0, 0.048d0, 0.050d0, bvec, j)
 
-    if (rank == 0) then
-        write(*,*) "Total mesh points generated:", j
-        write(*,*) "Expected mesh points:", (2*np+1)**dim
-    endif
+
+  if (rank == 0) then
+  	write(*,*) "Total mesh points generated:", j
+    write(*,*) "Expected mesh points:", (2*np+1)**dim
+  endif
 !------ Magnetic Field
-    allocate(Hm(2,2), Hmag(nb,nb))
-    call magnetic_field(nb, B_x, B_y, B_z, Hmag)
+  allocate(Hm(2,2), Hmag(nb,nb))
+    ! call magnetic_field(nb, B_x, B_y, B_z, Hmag)
 
 !----------- BEGIN INTERPOLATION -----------! 
 !------ Fourrier transform H(R) to H(k)
@@ -204,8 +222,8 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
         endif
        !alpha=float(ipart-1)/float(npartitions-1)
 
-        ! alpha=0.789473712 
-        alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
+        alpha=0.8
+        ! alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
         if (rank == 0) then
             write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
         endif
@@ -213,7 +231,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
         ! Initialize Hamiltonians for the current partition
     !    ene=0d0
 
-! !----- FOURIER TRANSFORM 
+! !----- FOURIER TRANSFORMS
 
 !---4x4---!   
     !    call fourier_transform_general(2*np, dim, nr_trivial, nr_topological, nb, ndeg_trivial, ndeg_topological, mesh,&
@@ -224,13 +242,61 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     !    ef(ipart)=(minval(ene(3,:))+maxval(ene(2,:)))/2d0 
 
 !---18x18---!
-       call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
-                                        Hamr_trivial, Hamr_topological, Hmag, alpha, &
-                                        enep, ene, work, lwork, rwork, rank, ierr)
+    !    call fourier_transform_optimized(2*np, dim, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
+    !                                     Hamr_trivial, Hamr_topological, Hmag, alpha, &
+    !                                     enep, ene, work, lwork, rwork, rank, ierr)
 
-    !    gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
-       gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
-    !    ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
+!--- Berry Transforms ---!
+        do kx=1, 2*np+1
+					do ky=1, 2*np+1
+						do kz=1, 2*np+1
+
+							k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
+
+							call inner_ft_optimized(k, nr_trivial, nb, ndeg_trivial, mesh, rvec_trivial, &
+																			Hamr_trivial, Hamr_topological, Hmag, alpha, &
+																			Hk_trivial, Hk_topological, H, Hk, rank, ierr)
+							call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
+							u0=Hk(:,13)
+
+							do i=1,3
+								stepmesh = mesh
+								! Make sure mesh step sizes are correct
+
+								stepmesh(i, :) = stepmesh(i, :) + dk
+								call inner_ft_optimized(k, nr_trivial, nb, ndeg_trivial, stepmesh, rvec_trivial, &
+																				Hamr_trivial, Hamr_topological, Hmag, alpha, &
+																				Hk_trivial, Hk_topological, H_step, Hk_step, rank, ierr)
+								call zheev('V', 'U', nb, Hk_step, nb, ene_step(:, k), work, lwork, rwork, info)
+								u1=Hk_step(:,13)
+								overlap = dot_product(conjg(u0), u1)
+								u1=u1*(conjg(overlap)/abs(overlap))
+
+								connection(i, kx, ky, kz) = -aimag(dot_product(conjg(u0), (u1)/dk))
+							enddo
+						enddo ! Exit k-loop
+					enddo
+				enddo 
+				
+        do kx=1, 2*np
+					do ky=1, 2*np
+						do kz=1, 2*np
+							curvature(1, kx, ky, kz) = (connection(3, kx, ky+1, kz)-connection(3, kx, ky, kz))/dk - &
+													   						 (connection(2, kx, ky, kz+1)-connection(2, kx, ky, kz))/dk
+							curvature(2, kx, ky, kz) = (connection(1, kx, ky, kz+1)-connection(1, kx, ky, kz))/dk - &
+													   						 (connection(3, kx+1, ky, kz)-connection(3, kx, ky, kz))/dk
+							curvature(3, kx, ky, kz) = (connection(2, kx+1, ky, kz)-connection(2, kx, ky, kz))/dk - &
+													   						 (connection(1, kx, ky+1, kz)-connection(1, kx, ky, kz))/dk
+							magnitude_field(kx, ky, kz) = sqrt(curvature(1,kx,ky,kz)**2 + &
+																					   		 curvature(2,kx,ky,kz)**2 + &
+																								 curvature(3,kx,ky,kz)**2)
+						enddo
+					enddo
+				enddo
+
+       gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
+    !    gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
+       ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
 !----- END FOURIER TRANSFORM
 
 !------Band gap and Fermi energy calculations
@@ -247,7 +313,6 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
     if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
 
         write(partnumber,'(i5)') ipart
-
 !-------Uncomment to write Energies to file
 !-------These energies are needed for the fermi surface script
         !   do k=1,(np+1)**dim
@@ -257,14 +322,14 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
 
 !-------Write Weyl points to file
 !-------Uncoment depending on the Hamiltonian used, or if perturbation is added
-            do k=1,(2*np+1)**dim
+            ! do k=1,(2*np+1)**dim
                 !----4x4----!
                 ! bandgap=ene(3,k)-ene(2,k) ! Unperturbed
                 ! bandgapp=enep(3,k)-enep(2,k) ! Perturbed
 
                 !-------18x18-------!
                 ! bandgap=ene(13,k)-ene(12,k) ! Unperturbed
-                bandgapp=enep(13,k)-enep(12,k) ! Perturbed
+                ! bandgapp=enep(13,k)-enep(12,k) ! Perturbed
 
                 !---------UNPERTURBED--------!
                 ! if (abs(bandgap-(gap_min(ipart))) .lt. 0.001d0) then
@@ -272,31 +337,51 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
                 !     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgap-(gap_min(ipart)))!, gap_min(ipart)
                 ! endif
                 !---------PERTURBED--------!
-                if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.001d0) then
-                    print*, abs(bandgapp-(gapp_min(ipart)))
-                    write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgapp-(gapp_min(ipart)))!, gap_min(ipart)
-                endif
-            end do
+                ! if (abs(bandgapp-(gapp_min(ipart))) .lt. 0.001d0) then
+                !     print*, abs(bandgapp-(gapp_min(ipart)))
+                !     write(110, '(5(x,f12.6))') mesh(1:3,k), alpha, abs(bandgapp-(gapp_min(ipart)))!, gap_min(ipart)
+                ! endif
+            ! end do
 
             ! write(100,*)
             ! write(100,*)
-            write(110,*)
-            write(110,*)
+            ! write(110,*)
+            ! write(110,*)
             
-    endif
+    ! endif
+
     ! if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_perturbed(ipart) < 0.08) then
-    !     write(partnumber,'(i5)') ipart
-    !     write(line,'(3a)') 'k_surface_fermi_energies_By_WSM_perturbed.dat' 
-    !     open(200,file=trim(line))
+        write(partnumber,'(i5)') ipart
+        write(line,'(3a)') 'curvaturesmalltest.dat'!'fermi_surface_energies_By_WSM_unfiltered.dat' 
+        open(200,file=trim(line))
          
-    !        do k=1,(np+1)**3
-    !              write(200, '(7(x,f12.6))') mesh(1:3,k), enep(12:13,k)!, ef(ipart)
-    !        end do
-    !          write(200,*)
-    !          write(200,*)
-    !          close(200)
+          ! do k=1,(2*np+1)**dim
+          !       !  write(200, '(7(x,f12.6))') mesh(1:3,k), enep(12:13,k)!, ef(ipart)
+          !        !Need the fermi energy of BCB again at the QCP, so need to plot only
+          !        !a small selection of points at less than 0.05 eV around the node
+          !       ! if (ene(13,k)-minval(ene(13,:)) .lt. 0.5d0) then
+          !   ! if (abs(gap_min(ipart)) .lt. 0.05d0) then
+
+          !       !  write(200, '(5(x,f12.6))') mesh(1:3,k), ene(12,k)-ef(ipart),ene(13,k)-ef(ipart)
+					! 	write(200, '(5(x,f12.6))') mesh(1:3,k), ene(13,k), ef(ipart), curvature(1:3,)
+          !       ! endif
+          ! end do
+          ! write(200,*)
+          ! write(200,*)
+          ! close(200)
     !  endif
-     
+						do kx=1, 2*np
+							do ky=1, 2*np
+								do kz=1, 2*np
+						 			k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
+									write(200, '(9(x,f12.6))') mesh(1:3,k), ene(13,k), ef(ipart), real(curvature(1:3,kx,ky,kz)), magnitude_field(kx, ky, kz)
+								enddo
+							enddo
+						enddo
+						write(200,*)
+						write(200,*)
+						close(200)
+		endif
 !------- Check time taken to calculate
 
        call cpu_time(part_time)
@@ -305,7 +390,7 @@ allocate(work(max(1,lwork)),rwork(max(1,3*nb-2)))
         print '(A, I3, A, F6.2)', "Partition ", ipart, " runtime (minutes): ", part_time2
        endif
     !    write(777, '(2(x,f12.6))') alpha, gap_min(ipart)
-    end do
+    end do ! Interpolation loop
     close(100)
     close(110)
 

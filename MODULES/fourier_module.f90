@@ -96,7 +96,7 @@ contains
 
       
       ! Compute eigenvalues/eigenvectors using LAPACK's ZHEEV
-      ! call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
+      !call zheev('V', 'U', nb, H, nb, enep(:, k), work, lwork, rwork, info)
       call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
       end do
       

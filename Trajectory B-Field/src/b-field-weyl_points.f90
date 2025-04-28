@@ -13,11 +13,11 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=10,npartitions=1,dim=3
+    integer,parameter::np=5,npartitions=1,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
-    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0, dk = 0.1d0!,& !Run again at B_y=0.05-0.06 to see the gap close
+    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0, dk = 0.000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
@@ -85,9 +85,9 @@ program generate_fermi
 
     ! real*8, parameter :: dk=0.000001d0
     !----Box for weyl point----!
-    real*8, parameter :: kbox_x=0.1d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.1d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.1d0
+    real*8, parameter :: kbox_x=0.12d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.12d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.055d0
 
     ! real*8, parameter :: kbox_x=0.15d0,&!x_min = -0.06d0, x_max = 0.06d0,&
     !                      kbox_y=0.15d0,&!y_min = -0.06d0, y_max = 0.06d0,&
@@ -193,7 +193,7 @@ program generate_fermi
 	allocate(U0(nb, 2*np+1, 2*np+1, 2*np+1))
 	allocate(connection(3, 2*np+1, 2*np+1, 2*np+1))
 	allocate(curvature(3, 2*np+1, 2*np+1, 2*np+1))
-	allocate(magnitude_field(2*np, 2*np, 2*np))
+	allocate(magnitude_field(2*np+1, 2*np+1, 2*np+1))
   
 	call berryLattice3D(np, dim, kbox_x, kbox_y, kbox_z, delkx, delky, delkz, meshBerry, bvec, j)
 	! call Lattice3D(np, dim, kbox_x, kbox_y, kbox_z, delkx, delky, delkz, mesh, bvec, j)
@@ -252,7 +252,7 @@ program generate_fermi
     !                                     Hamr_trivial, Hamr_topological, Hmag, alpha, &
     !                                     enep, ene, work, lwork, rwork, rank, ierr)
 
-				!!!!SOME BS!!!!
+				!---Extra Fourier transform method for BC---!
 							! do i=1,3
 							! 	stepmesh = mesh
 							! 	! Make sure mesh step sizes are correct
@@ -269,22 +269,64 @@ program generate_fermi
 							! 	connection(i, kx, ky, kz) = -aimag(dot_product(conjg(u0), (u1)/dk))
 							! enddo
 !--- Berry Transforms ---!
-        do kx=1, 2*np-1
-					do ky=1, 2*np-1
-						do kz=1, 2*np-1
+        do kx=1, 2*np+1
+					do ky=1, 2*np+1
+						do kz=1, 2*np+1
 
-							k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
+							! k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
 
               call inner_ft_berry(kx, ky, kz, nr_trivial, nb, ndeg_trivial, meshBerry, rvec_trivial, &
                                   Hamr_trivial, Hamr_topological, Hmag, alpha, &
                                   Hk_trivial, Hk_topological, H, Hk, rank, ierr)
-							call zheev('V', 'U', nb, Hk, nb, ene(:, k), work, lwork, rwork, info)
+							call zheev('V', 'U', nb, Hk, nb, eneBerry(:, kx, ky, kz), work, lwork, rwork, info)
 
 							U0(:, kx, ky, kz)=Hk(:,13)
 						enddo ! Exit k-loop
 					enddo
 				enddo 
-				! do kx=1, 2*np
+
+				
+        !---Finite Difference method
+				do kx=1, 2*np
+					do ky=1, 2*np
+						do kz=1, 2*np
+							! X direction
+							overlap_x = dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz))
+							phase_x = (overlap_x)/abs(overlap_x)
+							gauge_fixed_U_x = U0(:, kx+1, ky, kz) * conjg(phase_x)
+							connection(1, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_x-U0(:, kx, ky, kz))/dk))))!delkx)))
+              
+							! Y direction
+							overlap_y = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz))
+							phase_y = (overlap_y)/abs(overlap_y)
+							gauge_fixed_U_y = U0(:, kx, ky+1, kz) * conjg(phase_y)
+							connection(2, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_y-U0(:, kx, ky, kz))/dk))))!delky)))
+				
+							! Z direction
+							overlap_z = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1))
+							phase_z = (overlap_z)/abs(overlap_z)
+							gauge_fixed_U_z = U0(:, kx, ky, kz+1) * conjg(phase_z)
+							connection(3, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_z-U0(:, kx, ky, kz))/dk))))!delkz)))
+						enddo
+					enddo
+				enddo        
+        do kx=1, 2*np-1
+					do ky=1, 2*np-1
+						do kz=1, 2*np-1
+							curvature(1, kx, ky, kz) = (connection(3, kx, ky+1, kz)-connection(3, kx, ky, kz))/dk - &!delky
+													   						 (connection(2, kx, ky, kz+1)-connection(2, kx, ky, kz))/dk    !delkz
+							curvature(2, kx, ky, kz) = (connection(1, kx, ky, kz+1)-connection(1, kx, ky, kz))/dk - & !delkz
+													   						 (connection(3, kx+1, ky, kz)-connection(3, kx, ky, kz))/dk   !delkx
+							curvature(3, kx, ky, kz) = (connection(2, kx+1, ky, kz)-connection(2, kx, ky, kz))/dk - & !delkx
+													   						 (connection(1, kx, ky+1, kz)-connection(1, kx, ky, kz))/dk   !delky
+							magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
+																					   		 (curvature(2,kx,ky,kz))**2 + &
+																								 (curvature(3,kx,ky,kz))**2)
+						enddo
+					enddo
+				enddo
+
+        ! do kx=1, 2*np
 				! 	do ky=1, 2*np
 				! 		do kz=1, 2*np
 				! 			connection(1, kx, ky, kz)=-aimag(dot_product(U0(:, kx, ky, kz),((U0(:, kx+1, ky, kz)-U0(:, kx, ky, kz))/dk)))
@@ -293,45 +335,6 @@ program generate_fermi
 				! 		enddo ! Exit k-loop
 				! 	enddo
 				! enddo 
-        !---Finite Difference method
-				do kx=1, 2*np-2
-					do ky=1, 2*np-2
-						do kz=1, 2*np-2
-							! X direction
-							overlap_x = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz))
-							phase_x = (overlap_x)/abs(overlap_x)
-							gauge_fixed_U_x = U0(:, kx+1, ky, kz)! * conjg(phase_x)
-							connection(1, kx, ky, kz) = dcmplx(0d0,-1d0)*(dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_x-U0(:, kx, ky, kz))/delkx)))
-              
-							! Y direction
-							overlap_y = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz))
-							phase_y = (overlap_y)/abs(overlap_y)
-							gauge_fixed_U_y = U0(:, kx, ky+1, kz) !* conjg(phase_y)
-							connection(2, kx, ky, kz) = dcmplx(0d0,-1d0)*(dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_y-U0(:, kx, ky, kz))/delky)))
-				
-							! Z direction
-							overlap_z = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1))
-							phase_z = (overlap_z)/abs(overlap_z)
-							gauge_fixed_U_z = U0(:, kx, ky, kz+1)!* conjg(phase_z)
-							connection(3, kx, ky, kz) = dcmplx(0d0,-1d0)*(dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_z-U0(:, kx, ky, kz))/delkz)))
-						enddo
-					enddo
-				enddo        
-        do kx=1, 2*np-3
-					do ky=1, 2*np-3
-						do kz=1, 2*np-3
-							curvature(1, kx, ky, kz) = (connection(3, kx, ky+1, kz)-connection(3, kx, ky, kz))/delky - &
-													   						 (connection(2, kx, ky, kz+1)-connection(2, kx, ky, kz))/delkz
-							curvature(2, kx, ky, kz) = (connection(1, kx, ky, kz+1)-connection(1, kx, ky, kz))/delkz - &
-													   						 (connection(3, kx+1, ky, kz)-connection(3, kx, ky, kz))/delkx
-							curvature(3, kx, ky, kz) = (connection(2, kx+1, ky, kz)-connection(2, kx, ky, kz))/delkx - &
-													   						 (connection(1, kx, ky+1, kz)-connection(1, kx, ky, kz))/delky
-							magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
-																					   		 (curvature(2,kx,ky,kz))**2 + &
-																								 (curvature(3,kx,ky,kz))**2)
-						enddo
-					enddo
-				enddo
         !----Plaquette method
         ! do kx=1, 2*np
 				! 	do ky=1, 2*np
@@ -342,21 +345,21 @@ program generate_fermi
 				! 		enddo ! Exit k-loop
 				! 	enddo
 				! enddo 
-        ! do kx=1, 2*np
-        !   do ky=1, 2*np
-        !     do kz=1, 2*np
-        !       ! X direction
-        !       connection(1, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)) / &
-        !                                   abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)))
-        !       ! Y direction
-        !       connection(2, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)) / &
-        !                                   abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)))
-        !       ! Z direction
-        !       connection(3, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)) / &
-        !                                   abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)))
-        !     enddo
-        !   enddo
-        ! enddo
+        do kx=1, 2*np
+          do ky=1, 2*np
+            do kz=1, 2*np
+              ! X direction
+              connection(1, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)) / &
+                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)))
+              ! Y direction
+              connection(2, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)) / &
+                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)))
+              ! Z direction
+              connection(3, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)) / &
+                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)))
+            enddo
+          enddo
+        enddo
         !---
 
         ! do kx = 1, 2*np
@@ -386,21 +389,21 @@ program generate_fermi
         !     end do
         !   end do
         ! end do
-        ! do kx=1, 2*np
-				! 	do ky=1, 2*np
-				! 		do kz=1, 2*np
-				! 			curvature(1, kx, ky, kz) = log(connection(2, kx, ky, kz)*connection(3, kx, ky+1, kz)/ &
-				! 									   						    (connection(2, kx, ky, kz+1)*connection(3, kx, ky, kz)))
-				! 			curvature(2, kx, ky, kz) = log(connection(3, kx, ky, kz)*connection(1, kx, ky, kz+1)/ &
-        !                                     (connection(3, kx+1, ky, kz)*connection(1, kx, ky, kz)))
-				! 			curvature(3, kx, ky, kz) = log(connection(1, kx, ky, kz)*connection(2, kx+1, ky, kz)/ &
-        !                                     (connection(1, kx, ky+1, kz)*connection(2, kx, ky, kz)))
-				! 			magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
-				! 																	   		 (curvature(2,kx,ky,kz))**2 + &
-				! 																				 (curvature(3,kx,ky,kz))**2)
-				! 		enddo
-				! 	enddo
-				! enddo
+        do kx=1, 2*np
+					do ky=1, 2*np
+						do kz=1, 2*np
+							curvature(1, kx, ky, kz) = log(connection(2, kx, ky, kz)*connection(3, kx, ky+1, kz)/ &
+													   						    (connection(2, kx, ky, kz+1)*connection(3, kx, ky, kz)))
+							curvature(2, kx, ky, kz) = log(connection(3, kx, ky, kz)*connection(1, kx, ky, kz+1)/ &
+                                            (connection(3, kx+1, ky, kz)*connection(1, kx, ky, kz)))
+							curvature(3, kx, ky, kz) = log(connection(1, kx, ky, kz)*connection(2, kx+1, ky, kz)/ &
+                                            (connection(1, kx, ky+1, kz)*connection(2, kx, ky, kz)))
+							magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
+																					   		 (curvature(2,kx,ky,kz))**2 + &
+																								 (curvature(3,kx,ky,kz))**2)
+						enddo
+					enddo
+				enddo
        gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
     !    gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
       !  ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
@@ -478,13 +481,15 @@ program generate_fermi
           ! write(200,*)
           ! close(200)
     !  endif
-            kz = np
-						do kx=1, 2*np-3
-							do ky=1, 2*np-3
-								! do kz=1, 2*np-3
+            ! kz = np
+						do kx=2, 2*np-1
+							do ky=2, 2*np-1
+								do kz=2, 2*np-1
 						 			! k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
-									write(200, '(13(x,f12.6))') meshBerry(1:3, kx, ky, kz), real(curvature(3,kx,ky,kz)),magnitude_field(kx, ky, kz)
-								! enddo
+									write(200, '(13(x,f12.6))') meshBerry(1:3, kx, ky, kz), &
+                                              real(curvature(1:3,kx,ky,kz)), &
+                                              magnitude_field(kx, ky, kz)
+								enddo
 							enddo
 						enddo
 						write(200,*)

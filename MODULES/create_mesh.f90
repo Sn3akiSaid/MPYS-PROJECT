@@ -52,15 +52,14 @@ contains
     delkz = kbox_z/(2*np)
 
     j=0
-    do kx = 1, 2*np-1 !
-        do ky = 1, 2*np-1
-            do kz = 1, 2*np-1
+    do kx = 1, 2*np+1 !
+        do ky = 1, 2*np+1
+            do kz = 1, 2*np+1
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                ! (/ 0.017665681958398235,0.046638430945586576,0.47514974714462382/) !-ve
-                mesh(1, kx, ky, kz) = (kx-1)*delkx-kbox_x/2! + 0.046d0!+0.017665681958398235!*delkx! 
-                mesh(2, kx, ky, kz) = (ky-1)*delky-kbox_y/2 !+ 0.03d0!+0.046638430945586576!*delky+! 
-                mesh(3, kx, ky, kz) = (kz-1)*delkz-kbox_z/2 + 0.5d0*bvec(3,3)!*delkz!+0.47514974714462382!   !  -0.012d0!0.457d0
+                mesh(1, kx, ky, kz) = (kx-1)*delkx-kbox_x/2! + 0.046d0! 
+                mesh(2, kx, ky, kz) = (ky-1)*delky-kbox_y/2 !+ 0.03d0!
+                mesh(3, kx, ky, kz) = (kz-1)*delkz+ 0.5d0*bvec(3,3)-kbox_z/2 !
             end do
         end do
     end do

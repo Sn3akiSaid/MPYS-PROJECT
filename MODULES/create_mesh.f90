@@ -4,7 +4,7 @@ module create_mesh
 
   private
 
-  public :: Lattice3D, Lattice2D, SpecificLattice
+  public :: Lattice3D, berryLattice3D, SpecificLattice, Lattice2D
 
 contains
 
@@ -36,6 +36,35 @@ contains
     end do
     ! mesh(3,:)=mesh(3,:)
   end subroutine Lattice3D
+	subroutine berryLattice3D(np, dim, kbox_x, kbox_y, kbox_z, delkx, delky, delkz, mesh, bvec, j)
+    implicit none
+    integer, intent(in) :: np, dim
+    real*8, intent(in) :: kbox_x, kbox_y, kbox_z, bvec(3,3)
+		real*8, intent(inout) :: mesh(3, 2*np+1, 2*np+1, 2*np+1)
+    real*8, intent(out) :: delkx, delky, delkz
+                           
+
+    integer i, n, k, kx, ky, kz
+    integer, intent(out) :: j
+
+    delkx = kbox_x/(2*np)
+    delky = kbox_y/(2*np)
+    delkz = kbox_z/(2*np)
+
+    j=0
+    do kx = 1, 2*np-1 !
+        do ky = 1, 2*np-1
+            do kz = 1, 2*np-1
+                j = j+1  ! Direct index calculation
+                ! Calculate coordinates directly
+                ! (/ 0.017665681958398235,0.046638430945586576,0.47514974714462382/) !-ve
+                mesh(1, kx, ky, kz) = (kx-1)*delkx-kbox_x/2! + 0.046d0!+0.017665681958398235!*delkx! 
+                mesh(2, kx, ky, kz) = (ky-1)*delky-kbox_y/2 !+ 0.03d0!+0.046638430945586576!*delky+! 
+                mesh(3, kx, ky, kz) = (kz-1)*delkz-kbox_z/2 + 0.5d0*bvec(3,3)!*delkz!+0.47514974714462382!   !  -0.012d0!0.457d0
+            end do
+        end do
+    end do
+  end subroutine berryLattice3D
 
   subroutine SpecificLattice(mesh, np, kx_min, kx_max, ky_min, ky_max, kz_min, kz_max, bvec, j)
     implicit none
@@ -93,12 +122,12 @@ contains
         do n = -np, np
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                mesh(1, j) = i*delkx + 0.03d0
-                mesh(2, j) = n*delky + 0.04d0
+                mesh(1, j) = i*delkx !+ 0.03d0
+                mesh(2, j) = n*delky !+ 0.04d0
                 mesh(3, j) = 0.5d0*bvec(3,3)
         end do
     end do
 
-  end subroutine
+  end subroutine Lattice2D
 
 end module create_mesh

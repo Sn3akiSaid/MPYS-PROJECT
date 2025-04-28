@@ -7,7 +7,7 @@ module fourier_module
   private
   
   ! Public interfaces
-  public :: fourier_transform_optimized, fourier_transform_general, inner_ft_optimized
+  public :: fourier_transform_optimized, fourier_transform_general, inner_ft_optimized, inner_ft_berry
   
   ! Module-level constants
   real*8, parameter, private :: twopi = 4.0d0*atan(1.0d0)*2.0d0
@@ -50,6 +50,44 @@ contains
     
     ierr = 0
   end subroutine inner_ft_optimized
+   subroutine inner_ft_berry(kx, ky, kz, nr, nb, ndeg, mesh, rvec, &
+                            Hamr_trivial, Hamr_topological, Hmag, alpha, &
+                            Hk_trivial, Hk_topological, H, Hk, rank, ierr)
+  implicit none
+
+  integer, intent(in) :: kx, ky, kz, nr, nb, rank
+  integer, intent(in) :: ndeg(nr)
+  real*8, intent(in) :: mesh(3, kx, ky, kz), rvec(3, nr), alpha
+  complex*16, intent(in) :: Hamr_trivial(nb, nb, nr), Hamr_topological(nb, nb, nr)
+  complex*16, intent(in) :: Hmag(nb, nb)
+  ! Outputs
+  complex*16, intent(out) :: Hk_trivial(nb, nb), Hk_topological(nb, nb), H(nb, nb), Hk(nb, nb)
+  integer, intent(out) :: ierr
+  ! Local variables
+  integer :: j
+  real*8 :: phase
+  complex*16 :: phase_factor
+  ! complex*16 :: Hk(nb, nb)
+
+ ! Initialize accumulation arrays to zero
+    Hk=0
+    Hk_trivial = (0d0, 0d0)
+    Hk_topological = (0d0, 0d0)
+    
+    do j = 1, nr
+        phase = dot_product(mesh(:, kx, ky, kz), rvec(:, j))
+        phase_factor = dcmplx(cos(phase), -sin(phase)) / float(ndeg(j))
+      !   phase_factor = phases(j, k)!!! CONT FROM HERE
+        Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
+        Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
+    end do
+    
+    ! Interpolate and add perturbation:
+    Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
+    H = Hk + Hmag
+    
+    ierr = 0
+  end subroutine inner_ft_berry
   !--------------------------------------------------------------------
   ! Subroutine for the optimized Fourier transform (18x18 case)
   subroutine fourier_transform_optimized(np, dim, nr, nb, ndeg, mesh, rvec, &

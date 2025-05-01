@@ -13,15 +13,15 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=5,npartitions=1,dim=3
+    integer,parameter::np=30,npartitions=20,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
-    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0, dk = 0.000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
+    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0,&!, dk = 0.000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                    !   alpha_min = 0.805d0, alpha_max = 0.81d0 !18x18 range  perturbed range
+                      alpha_min = 0.76d0, alpha_max = 0.81d0 !18x18 range  perturbed range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -56,6 +56,7 @@ program generate_fermi
            mesh_kx(3,np, np), mesh_ky(3,np, np),&
            mesh_gap(3, np**2),&
            delkx, delky, delkz,&
+
            part_time,part_time2
 
 
@@ -85,13 +86,13 @@ program generate_fermi
 
     ! real*8, parameter :: dk=0.000001d0
     !----Box for weyl point----!
-    real*8, parameter :: kbox_x=0.12d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-                         kbox_y=0.12d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.055d0
+    ! real*8, parameter :: kbox_x=0.00035,&
+    !                      kbox_y=0.00035,&
+    !                      kbox_z=0.00035
 
-    ! real*8, parameter :: kbox_x=0.15d0,&!x_min = -0.06d0, x_max = 0.06d0,&
-    !                      kbox_y=0.15d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-    !                      kbox_z=0.05d0!z_min = -0.03d0, z_max = 0.03d0
+    real*8, parameter :: kbox_x=0.15d0,&!x_min = -0.06d0, x_max = 0.06d0,&
+                         kbox_y=0.15d0,&!y_min = -0.06d0, y_max = 0.06d0,&
+                         kbox_z=0.08d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -206,7 +207,7 @@ program generate_fermi
   endif
 !------ Magnetic Field
   allocate(Hm(2,2), Hmag(nb,nb))
-    ! call magnetic_field(nb, B_x, B_y, B_z, Hmag)
+    call magnetic_field(nb, B_x, B_y, B_z, Hmag)
 
 !----------- BEGIN INTERPOLATION -----------! 
 !------ Fourrier transform H(R) to H(k)
@@ -226,10 +227,10 @@ program generate_fermi
         if (rank == 0) then
             write(*,'(a,i5,a,i5)') 'Partition=', ipart, ' of ', npartitions
         endif
-       !alpha=float(ipart-1)/float(npartitions-1)
+      !  alpha=float(ipart-1)/float(npartitions-1)
 
-        alpha=0.77966
-        ! alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
+        ! alpha=0.791
+        alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
         if (rank == 0) then
             write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
         endif
@@ -274,57 +275,82 @@ program generate_fermi
 						do kz=1, 2*np+1
 
 							! k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
-
-              call inner_ft_berry(kx, ky, kz, nr_trivial, nb, ndeg_trivial, meshBerry, rvec_trivial, &
-                                  Hamr_trivial, Hamr_topological, Hmag, alpha, &
-                                  Hk_trivial, Hk_topological, H, Hk, rank, ierr)
+              Hk=0
+              Hk_trivial = (0d0, 0d0)
+              Hk_topological = (0d0, 0d0)
+              
+              do j = 1, nr_trivial
+                  phase = dot_product(meshBerry(:, kx, ky, kz), rvec_trivial(:, j))
+                  phase_factor = dcmplx(cos(phase), -sin(phase)) / float(ndeg_trivial(j))
+                !   phase_factor = phases(j, k)!!! CONT FROM HERE
+                  Hk_trivial = Hk_trivial + Hamr_trivial(:, :, j) * phase_factor
+                  Hk_topological = Hk_topological + Hamr_topological(:, :, j) * phase_factor
+              end do
+              
+              ! Interpolate and add perturbation:
+              Hk = Hk_trivial * (1.0d0 - alpha) + Hk_topological * alpha
+              H = Hk + Hmag
+              
+              ierr = 0
+              ! call inner_ft_berry(kx, ky, kz, nr_trivial, nb, ndeg_trivial, meshBerry, rvec_trivial, &
+              !                     Hamr_trivial, Hamr_topological, Hmag, alpha, &
+              !                     Hk_trivial, Hk_topological, H, Hk, rank, ierr)
 							call zheev('V', 'U', nb, Hk, nb, eneBerry(:, kx, ky, kz), work, lwork, rwork, info)
 
 							U0(:, kx, ky, kz)=Hk(:,13)
+              ! if (kx==1 .and. ky==1 .and. kz > 1) then
+              !   write(*,'(a,i3,a,f10.6)') 'phase jump at [1,1,',kz,']: arg = ',atan2(aimag(dot_product(conjg(U0(:,1,1,kz-1)),U0(:,1,1,kz))),real(dot_product(conjg(U0(:,1,1,kz-1)),U0(:,1,1,kz))))
+              
+              ! else if (ky==1 .and. kz==1 .and. kx > 1) then
+              !   write(*,'(a,i3,a,f10.6)') 'phase jump at [',kx,',1,1]: arg = ',atan2(aimag(dot_product(conjg(U0(:,kx-1,1,1)),U0(:,kx,1,1))),real(dot_product(conjg(U0(:,kx-1,1,1)),U0(:,kx,1,1))))
+              ! else if (kx==1 .and. kz==1 .and. ky > 1) then
+              !   write(*,'(a,i3,a,f10.6)') 'phase jump at [',kx,',1,1]: arg = ',atan2(aimag(dot_product(conjg(U0(:,kx-1,1,1)),U0(:,kx,1,1))),real(dot_product(conjg(U0(:,kx-1,1,1)),U0(:,kx,1,1))))              
+              ! end if
+              
 						enddo ! Exit k-loop
 					enddo
 				enddo 
 
 				
         !---Finite Difference method
-				do kx=1, 2*np
-					do ky=1, 2*np
-						do kz=1, 2*np
-							! X direction
-							overlap_x = dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz))
-							phase_x = (overlap_x)/abs(overlap_x)
-							gauge_fixed_U_x = U0(:, kx+1, ky, kz) * conjg(phase_x)
-							connection(1, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_x-U0(:, kx, ky, kz))/dk))))!delkx)))
+				! do kx=1, 2*np
+				! 	do ky=1, 2*np
+				! 		do kz=1, 2*np
+				! 			! X direction
+				! 			overlap_x = dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz))
+				! 			phase_x = (overlap_x)/abs(overlap_x)
+				! 			gauge_fixed_U_x = U0(:, kx+1, ky, kz) * conjg(phase_x)
+				! 			connection(1, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_x-U0(:, kx, ky, kz))/dk))))!delkx)))
               
-							! Y direction
-							overlap_y = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz))
-							phase_y = (overlap_y)/abs(overlap_y)
-							gauge_fixed_U_y = U0(:, kx, ky+1, kz) * conjg(phase_y)
-							connection(2, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_y-U0(:, kx, ky, kz))/dk))))!delky)))
+				! 			! Y direction
+				! 			overlap_y = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz))
+				! 			phase_y = (overlap_y)/abs(overlap_y)
+				! 			gauge_fixed_U_y = U0(:, kx, ky+1, kz) * conjg(phase_y)
+				! 			connection(2, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_y-U0(:, kx, ky, kz))/dk))))!delky)))
 				
-							! Z direction
-							overlap_z = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1))
-							phase_z = (overlap_z)/abs(overlap_z)
-							gauge_fixed_U_z = U0(:, kx, ky, kz+1) * conjg(phase_z)
-							connection(3, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_z-U0(:, kx, ky, kz))/dk))))!delkz)))
-						enddo
-					enddo
-				enddo        
-        do kx=1, 2*np-1
-					do ky=1, 2*np-1
-						do kz=1, 2*np-1
-							curvature(1, kx, ky, kz) = (connection(3, kx, ky+1, kz)-connection(3, kx, ky, kz))/dk - &!delky
-													   						 (connection(2, kx, ky, kz+1)-connection(2, kx, ky, kz))/dk    !delkz
-							curvature(2, kx, ky, kz) = (connection(1, kx, ky, kz+1)-connection(1, kx, ky, kz))/dk - & !delkz
-													   						 (connection(3, kx+1, ky, kz)-connection(3, kx, ky, kz))/dk   !delkx
-							curvature(3, kx, ky, kz) = (connection(2, kx+1, ky, kz)-connection(2, kx, ky, kz))/dk - & !delkx
-													   						 (connection(1, kx, ky+1, kz)-connection(1, kx, ky, kz))/dk   !delky
-							magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
-																					   		 (curvature(2,kx,ky,kz))**2 + &
-																								 (curvature(3,kx,ky,kz))**2)
-						enddo
-					enddo
-				enddo
+				! 			! Z direction
+				! 			overlap_z = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1))
+				! 			phase_z = (overlap_z)/abs(overlap_z)
+				! 			gauge_fixed_U_z = U0(:, kx, ky, kz+1) * conjg(phase_z)
+				! 			connection(3, kx, ky, kz) = -aimag((dot_product(((U0(:, kx, ky, kz))),((gauge_fixed_U_z-U0(:, kx, ky, kz))/dk))))!delkz)))
+				! 		enddo
+				! 	enddo
+				! enddo        
+        ! do kx=1, 2*np-1
+				! 	do ky=1, 2*np-1
+				! 		do kz=1, 2*np-1
+				! 			curvature(1, kx, ky, kz) = (connection(3, kx, ky+1, kz)-connection(3, kx, ky, kz))/dk - &!delky
+				! 									   						 (connection(2, kx, ky, kz+1)-connection(2, kx, ky, kz))/dk    !delkz
+				! 			curvature(2, kx, ky, kz) = (connection(1, kx, ky, kz+1)-connection(1, kx, ky, kz))/dk - & !delkz
+				! 									   						 (connection(3, kx+1, ky, kz)-connection(3, kx, ky, kz))/dk   !delkx
+				! 			curvature(3, kx, ky, kz) = (connection(2, kx+1, ky, kz)-connection(2, kx, ky, kz))/dk - & !delkx
+				! 									   						 (connection(1, kx, ky+1, kz)-connection(1, kx, ky, kz))/dk   !delky
+				! 			magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
+				! 																	   		 (curvature(2,kx,ky,kz))**2 + &
+				! 																				 (curvature(3,kx,ky,kz))**2)
+				! 		enddo
+				! 	enddo
+				! enddo
 
         ! do kx=1, 2*np
 				! 	do ky=1, 2*np
@@ -345,22 +371,80 @@ program generate_fermi
 				! 		enddo ! Exit k-loop
 				! 	enddo
 				! enddo 
-        do kx=1, 2*np
-          do ky=1, 2*np
-            do kz=1, 2*np
+
+! do ky = 1, 2*np+1
+!   do kz = 1, 2*np+1
+!     do kx = 2, 2*np+1
+!       ! complex :: overlap, phase_factor
+!       overlap = dot_product(conjg(U0(:,kx-1,ky,kz)), U0(:,kx,ky,kz))
+!       phase = overlap / abs(overlap)  ! This is exp(i*phi)
+!       U0(:,kx,ky,kz) = U0(:,kx,ky,kz) / phase
+!     end do
+!   end do
+! end do
+
+! ! Smooth along ky
+! do kx = 1, 2*np+1
+!   do kz = 1, 2*np+1
+!     do ky = 2, 2*np+1
+!       ! complex :: overlap, phase_factor
+!       overlap = dot_product(conjg(U0(:,kx,ky-1,kz)), U0(:,kx,ky,kz))
+!       phase = overlap / abs(overlap)
+!       U0(:,kx,ky,kz) = U0(:,kx,ky,kz) / phase
+!     end do
+!   end do
+! end do
+
+! ! Smooth along kz
+! do kx = 1, 2*np+1
+!   do ky = 1, 2*np+1
+!     do kz = 2, 2*np+1
+!       ! complex :: overlap, phase
+!       overlap = dot_product(conjg(U0(:,kx,ky,kz-1)), U0(:,kx,ky,kz))
+!       phase = overlap / abs(overlap)
+!       U0(:,kx,ky,kz) = U0(:,kx,ky,kz) / phase
+!     end do
+!   end do
+! end do
+!         do kx = 2, 2*np-1
+!           ky = 1
+!           kz = 1
+      
+!           overlap = dot_product(conjg(U0(:, kx-1, ky, kz)), U0(:, kx, ky, kz))
+      
+!           write(*,'(a,3i4,a,f10.6)') 'phase jump at [', kx, ky, kz, ']: arg = ', atan2(aimag(overlap), real(overlap))
+!           write(*,'(a,3f10.6)') 'overlap (re,im,abs): ', real(overlap), aimag(overlap), abs(overlap)
+!       enddo
+        ! Smooth along kx
+        do kx=2, 2*np
+          do ky=2, 2*np
+            do kz=2, 2*np
+
               ! X direction
-              connection(1, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)) / &
-                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)))
+              connection(1, kx, ky, kz) = dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)) / &
+                                          abs(dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)))
               ! Y direction
-              connection(2, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)) / &
-                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)))
+              connection(2, kx, ky, kz) = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)) / &
+                                          abs(dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky+1, kz)))
               ! Z direction
-              connection(3, kx, ky, kz) = dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)) / &
-                                          abs(dot_product(conjg(U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)))
+              connection(3, kx, ky, kz) = dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)) / &
+                                          abs(dot_product((U0(:, kx, ky, kz)), U0(:, kx, ky, kz+1)))
             enddo
           enddo
         enddo
-        !---
+        do kx=3, 2*np-1
+					do ky=3, 2*np-1
+						do kz=3, 2*np-1
+              ! log((U(2,1,ikx,iky,ikz)*U(3,1,ikx,iky+1,ikz))/(U(2,1,ikx,iky,ikz+1)*U(3,1,ikx,iky,ikz)))
+							curvature(1, kx, ky, kz) = log((connection(2, kx, ky, kz)*connection(3, kx, ky+1, kz)) /(((connection(2, kx, ky, kz+1)*connection(3, kx, ky, kz)))))
+							curvature(2, kx, ky, kz) = log((connection(3, kx, ky, kz)*connection(1, kx, ky, kz+1)) /(((connection(3, kx+1, ky, kz)*connection(1, kx, ky, kz)))))
+							curvature(3, kx, ky, kz) = log((connection(1, kx, ky, kz)*connection(2, kx+1, ky, kz)) /(((connection(1, kx, ky+1, kz)*connection(2, kx, ky, kz)))))
+							magnitude_field(kx, ky, kz) = sqrt((aimag(curvature(1,kx,ky,kz)))**2 + &
+																					   		 (aimag(curvature(2,kx,ky,kz)))**2 + &
+																								 (aimag(curvature(3,kx,ky,kz)))**2)
+						enddo
+					enddo
+				enddo
 
         ! do kx = 1, 2*np
         !   do ky = 1, 2*np
@@ -389,41 +473,19 @@ program generate_fermi
         !     end do
         !   end do
         ! end do
-        do kx=1, 2*np
-					do ky=1, 2*np
-						do kz=1, 2*np
-							curvature(1, kx, ky, kz) = log(connection(2, kx, ky, kz)*connection(3, kx, ky+1, kz)/ &
-													   						    (connection(2, kx, ky, kz+1)*connection(3, kx, ky, kz)))
-							curvature(2, kx, ky, kz) = log(connection(3, kx, ky, kz)*connection(1, kx, ky, kz+1)/ &
-                                            (connection(3, kx+1, ky, kz)*connection(1, kx, ky, kz)))
-							curvature(3, kx, ky, kz) = log(connection(1, kx, ky, kz)*connection(2, kx+1, ky, kz)/ &
-                                            (connection(1, kx, ky+1, kz)*connection(2, kx, ky, kz)))
-							magnitude_field(kx, ky, kz) = sqrt((curvature(1,kx,ky,kz))**2 + &
-																					   		 (curvature(2,kx,ky,kz))**2 + &
-																								 (curvature(3,kx,ky,kz))**2)
-						enddo
-					enddo
-				enddo
+
        gap_min(ipart)=abs(minval(ene(13,:))-maxval(ene(12,:))) !Unperturbed Case
     !    gapp_min(ipart)=abs(minval(enep(13,:))-maxval(enep(12,:))) !Perturbed Case
       !  ef(ipart)=(minval(ene(13,:))+maxval(ene(12,:)))/2d0
        ef(ipart)=(minval(eneBerry(13,:,:,:))+maxval(eneBerry(12,:,:,:)))/2d0
 !----- END FOURIER TRANSFORM
 
-!------Band gap and Fermi energy calculations
-    
-   
-
-    
-
-
-
 !------Export data-------!
 
 !------Only rank 0 writes output files
     if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end) then
 
-        write(partnumber,'(i5)') ipart
+        ! write(partnumber,'(i5)') ipart
 !-------Uncomment to write Energies to file
 !-------These energies are needed for the fermi surface script
         !   do k=1,(np+1)**dim
@@ -461,9 +523,9 @@ program generate_fermi
             
     ! endif
 
-    ! if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_perturbed(ipart) < 0.08) then
+    !  if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_perturbed(ipart) < 0.08) then
         write(partnumber,'(i5)') ipart
-        write(line,'(3a)') 'curvatureweyl.dat'!'fermi_surface_energies_By_WSM_unfiltered.dat' 
+        write(line,'(3a)') 'berryinWSM_',trim(adjustl(partnumber)),'.dat'!'fermi_surface_energies_By_WSM_unfiltered.dat' 
         open(200,file=trim(line))
          
           ! do k=1,(2*np+1)**dim
@@ -482,13 +544,11 @@ program generate_fermi
           ! close(200)
     !  endif
             ! kz = np
-						do kx=2, 2*np-1
-							do ky=2, 2*np-1
-								do kz=2, 2*np-1
+						do kx=3, 2*np-1
+							do ky=3, 2*np-1
+								do kz=3, 2*np-1
 						 			! k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
-									write(200, '(13(x,f12.6))') meshBerry(1:3, kx, ky, kz), &
-                                              real(curvature(1:3,kx,ky,kz)), &
-                                              magnitude_field(kx, ky, kz)
+									write(200, '(3(x,f12.6),6(1x,f20.8))') meshBerry(:, kx, ky, kz), -aimag(curvature(:,kx,ky,kz)), magnitude_field(kx, ky, kz), eneBerry(13, kx, ky, kz), alpha
 								enddo
 							enddo
 						enddo
@@ -510,44 +570,44 @@ program generate_fermi
 
     close(777)
     ! Gather results from all processes to rank 0
-if (rank == 0) then
-    ! We already have results for our local partitions
-    ! Receive results from other processes
-    do i = 1, nprocs-1
-        local_start = i * local_count + 1
-        local_end = (i + 1) * local_count
-        if (i == nprocs - 1) then
-            local_end = npartitions
-        end if
-        local_count = local_end - local_start + 1
+! if (rank == 0) then
+!     ! We already have results for our local partitions
+!     ! Receive results from other processes
+!     do i = 1, nprocs-1
+!         local_start = i * local_count + 1
+!         local_end = (i + 1) * local_count
+!         if (i == nprocs - 1) then
+!             local_end = npartitions
+!         end if
+!         local_count = local_end - local_start + 1
         
-        if (local_count > 0) then
-            call MPI_RECV(gap_unperturbed(local_start), local_count, MPI_DOUBLE_PRECISION, i, 0, &
-                         MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
-            call MPI_RECV(ef(local_start), local_count, MPI_DOUBLE_PRECISION, i, 1, &
-                         MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
-        endif
-    end do
+!         if (local_count > 0) then
+!             call MPI_RECV(gap_unperturbed(local_start), local_count, MPI_DOUBLE_PRECISION, i, 0, &
+!                          MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
+!             call MPI_RECV(ef(local_start), local_count, MPI_DOUBLE_PRECISION, i, 1, &
+!                          MPI_COMM_WORLD, MPI_STATUS_IGNORE, ierr)
+!         endif
+!     end do
     
-    ! Write out the gap data for all partitions
-    open(777, file='gap.dat')
-    do ipart = 1, npartitions
-        write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap_unperturbed(ipart)
-    end do
-    close(777)
+!     ! Write out the gap data for all partitions
+!     open(777, file='gap.dat')
+!     do ipart = 1, npartitions
+!         write(777, '(2(x,f12.6))') float(ipart-1)/float(npartitions-1), gap_unperturbed(ipart)
+!     end do
+!     close(777)
     
-    ! Find the critical alpha with minimum gap
-    temp_index = minloc(gap_unperturbed, dim=1)
-    write(*,*) "Critical alpha with minimum gap: ", float(temp_index-1)/float(npartitions-1)
-    write(*,*) "Minimum gap value: ", gap_unperturbed(temp_index)
+!     ! Find the critical alpha with minimum gap
+!     temp_index = minloc(gap_unperturbed, dim=1)
+!     write(*,*) "Critical alpha with minimum gap: ", float(temp_index-1)/float(npartitions-1)
+!     write(*,*) "Minimum gap value: ", gap_unperturbed(temp_index)
     
-else
-    ! Send results to master process
-    call MPI_SEND(gap(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
-                 0, 0, MPI_COMM_WORLD, ierr)
-    call MPI_SEND(ef(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
-                 0, 1, MPI_COMM_WORLD, ierr)
-endif
+! else
+!     ! Send results to master process
+!     call MPI_SEND(gap(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
+!                  0, 0, MPI_COMM_WORLD, ierr)
+!     call MPI_SEND(ef(local_start), local_end-local_start+1, MPI_DOUBLE_PRECISION, &
+!                  0, 1, MPI_COMM_WORLD, ierr)
+! endif
 
 ! Measure total runtime
 call MPI_BARRIER(MPI_COMM_WORLD, ierr)

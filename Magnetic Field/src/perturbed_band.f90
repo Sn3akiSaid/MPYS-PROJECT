@@ -8,7 +8,7 @@ Program interpolate_topology
     Implicit None
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
-    integer,parameter::nkpath=3,np=500,npartitions=1
+    integer,parameter::nkpath=3,np=2000,npartitions=1
 !---Magnetic Field to be modified by User
     real*8,parameter::B_x=0d0, B_y=0.1d0, B_z=0d0
 !------------------------------------------------------
@@ -61,18 +61,18 @@ Program interpolate_topology
     read(98,*)bvec
 !---------------kpath
 !  ky
-    ! data kpath(:,1) /     0.1d0,  -0.2d0,   0.5d0/  
-    ! data kpath(:,2) /     0.0d0,   0.0d0,   0.5d0/  
-    ! data kpath(:,3) /    -0.1d0,   0.2d0,   0.5d0/  
+    data kpath(:,1) /     0.1d0,  -0.2d0,   0.5d0/  
+    data kpath(:,2) /     0.0d0,   0.0d0,   0.5d0/  
+    data kpath(:,3) /    -0.1d0,   0.2d0,   0.5d0/  
 !  kx
     ! data kpath(:,1) /    -0.1d0,   0.0d0,    0.5d0/  
     ! data kpath(:,2) /     0.0d0,   0.0d0,    0.5d0/  
     ! data kpath(:,3) /     0.1d0,   0.0d0,    0.5d0/
   
 !  LAH
-    data kpath(:,1) /    -0.5d0,    0.5d0,    0.5d0/  !L
-    data kpath(:,2) /     0.0d0,    0.0d0,    0.5d0/  !A
-    data kpath(:,3) /     third,    third,    0.5d0/  !H
+    ! data kpath(:,1) /    -0.5d0,    0.5d0,    0.5d0/  !L
+    ! data kpath(:,2) /     0.0d0,    0.0d0,    0.5d0/  !A
+    ! data kpath(:,3) /     third,    third,    0.5d0/  !H
     
     ! data kpath(:,1) /     0.035d0,    0.011d0,    0.5d0/  !L
     ! data kpath(:,2) /     0.0505d0,   0.0164d0,    0.5d0/  !A
@@ -180,7 +180,7 @@ Program interpolate_topology
     do ipart=1,npartitions
        write(*,'(a,i5)') 'Partition=',ipart
     !    alpha=float(ipart-1)/float(npartitions-1)
-       alpha = 0.7777
+       alpha = 0
        do k=1,nk
               HK_trivial=(0d0,0d0)
           HK_topological=(0d0,0d0)

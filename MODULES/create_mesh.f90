@@ -57,9 +57,11 @@ contains
             do kz = 1, 2*np+1
                 j = j+1  ! Direct index calculation
                 ! Calculate coordinates directly
-                mesh(1, kx, ky, kz) = (kx-1)*delkx-kbox_x/2! + 0.046d0! 
-                mesh(2, kx, ky, kz) = (ky-1)*delky-kbox_y/2 !+ 0.03d0!
-                mesh(3, kx, ky, kz) = (kz-1)*delkz+ 0.5d0*bvec(3,3)-kbox_z/2 !
+                ! offset(:,1,3) = (/ ,,/) !+ve
+                ! ,,
+                mesh(1, kx, ky, kz) = (kx-1)*delkx-kbox_x/2!-0.01765908461242609!+0.01766767357940942 ! + 0.046d0!
+                mesh(2, kx, ky, kz) = (ky-1)*delky-kbox_y/2!-0.04663940372172213!+(-0.04650968222518360) ! + 0.03d0!
+                mesh(3, kx, ky, kz) = (kz-1)*delkz-kbox_z/2+0.5d0*bvec(3,3)! + 0.43932749486813732!0.47482330199264761  !
             end do
         end do
     end do

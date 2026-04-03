@@ -13,15 +13,15 @@ program generate_fermi
 !--------Presets to be changed by User
     character(len=80):: prefix="BiTeI"
     !Adjust these parameters to obtain better resolution around alphacrit and see points closer to an effectively closed gap
-    integer,parameter::np=30,npartitions=20,dim=3
+    integer,parameter::np=15,npartitions=10,dim=3
          ! Flags
     logical :: useOptimized = .true.  ! Set to false for 4x4 case
     
-    real*8,parameter::B_x = 0d0, B_y = 0.01d0, B_z = 0d0,&!, dk = 0.000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
+    real*8,parameter::B_x = 0d0, B_y = 0.012d0, B_z = 0d0,&!, dk = 0.000001d0!,& !Run again at B_y=0.05-0.06 to see the gap close
                     !   alpha_min = 0.50d0, alpha_max = 0.6d0 !4x4 range perturbed
                     !   alpha_min = 0d0, alpha_max = 1d0
 
-                      alpha_min = 0.76d0, alpha_max = 0.81d0 !18x18 range  perturbed range
+                      alpha_min = 0.78d0, alpha_max = 0.8d0 !18x18 range  perturbed range
 
 !---------MPI variables
     integer :: ierr, nprocs, rank, local_start, local_end, local_count
@@ -92,7 +92,7 @@ program generate_fermi
 
     real*8, parameter :: kbox_x=0.15d0,&!x_min = -0.06d0, x_max = 0.06d0,&
                          kbox_y=0.15d0,&!y_min = -0.06d0, y_max = 0.06d0,&
-                         kbox_z=0.08d0!z_min = -0.03d0, z_max = 0.03d0
+                         kbox_z=0.07d0!z_min = -0.03d0, z_max = 0.03d0
 
     integer, dimension(:), allocatable:: indices
 
@@ -229,7 +229,9 @@ program generate_fermi
         endif
       !  alpha=float(ipart-1)/float(npartitions-1)
 
+        ! alpha=0.78631579
         ! alpha=0.791
+        ! alpha=0.74
         alpha = alpha_min + float(ipart - 1)*(alpha_max - alpha_min)/float(npartitions - 1)
         if (rank == 0) then
             write(*,'(A,I5,A,F12.6)') 'Partition ', ipart, ' alpha = ', alpha
@@ -297,7 +299,7 @@ program generate_fermi
               !                     Hk_trivial, Hk_topological, H, Hk, rank, ierr)
 							call zheev('V', 'U', nb, Hk, nb, eneBerry(:, kx, ky, kz), work, lwork, rwork, info)
 
-							U0(:, kx, ky, kz)=Hk(:,13)
+							U0(:, kx, ky, kz)=Hk(:,12)
               ! if (kx==1 .and. ky==1 .and. kz > 1) then
               !   write(*,'(a,i3,a,f10.6)') 'phase jump at [1,1,',kz,']: arg = ',atan2(aimag(dot_product(conjg(U0(:,1,1,kz-1)),U0(:,1,1,kz))),real(dot_product(conjg(U0(:,1,1,kz-1)),U0(:,1,1,kz))))
               
@@ -416,9 +418,9 @@ program generate_fermi
 !           write(*,'(a,3f10.6)') 'overlap (re,im,abs): ', real(overlap), aimag(overlap), abs(overlap)
 !       enddo
         ! Smooth along kx
-        do kx=2, 2*np
-          do ky=2, 2*np
-            do kz=2, 2*np
+        do kx=1, 2*np
+          do ky=1, 2*np
+            do kz=1, 2*np
 
               ! X direction
               connection(1, kx, ky, kz) = dot_product((U0(:, kx, ky, kz)), U0(:, kx+1, ky, kz)) / &
@@ -432,9 +434,9 @@ program generate_fermi
             enddo
           enddo
         enddo
-        do kx=3, 2*np-1
-					do ky=3, 2*np-1
-						do kz=3, 2*np-1
+        do kx=1, 2*np-1
+					do ky=1, 2*np-1
+						do kz=1, 2*np-1
               ! log((U(2,1,ikx,iky,ikz)*U(3,1,ikx,iky+1,ikz))/(U(2,1,ikx,iky,ikz+1)*U(3,1,ikx,iky,ikz)))
 							curvature(1, kx, ky, kz) = log((connection(2, kx, ky, kz)*connection(3, kx, ky+1, kz)) /(((connection(2, kx, ky, kz+1)*connection(3, kx, ky, kz)))))
 							curvature(2, kx, ky, kz) = log((connection(3, kx, ky, kz)*connection(1, kx, ky, kz+1)) /(((connection(3, kx+1, ky, kz)*connection(1, kx, ky, kz)))))
@@ -525,7 +527,7 @@ program generate_fermi
 
     !  if (rank == 0 .and. ipart >= local_start .and. ipart <= local_end .and. gap_perturbed(ipart) < 0.08) then
         write(partnumber,'(i5)') ipart
-        write(line,'(3a)') 'berryinWSM_',trim(adjustl(partnumber)),'.dat'!'fermi_surface_energies_By_WSM_unfiltered.dat' 
+        write(line,'(3a)') 'BerryUnpertTVB_',trim(adjustl(partnumber)),'.dat'!'fermi_surface_energies_By_WSM_unfiltered.dat' 
         open(200,file=trim(line))
          
           ! do k=1,(2*np+1)**dim
@@ -544,11 +546,11 @@ program generate_fermi
           ! close(200)
     !  endif
             ! kz = np
-						do kx=3, 2*np-1
-							do ky=3, 2*np-1
-								do kz=3, 2*np-1
+						do kx=1, 2*np-1
+							do ky=1, 2*np-1
+								do kz=1, 2*np-1
 						 			! k = (kx-1) + (ky-1)*(2*np+1) + (kz-1)*(2*np+1)**2 + 1
-									write(200, '(3(x,f12.6),6(1x,f20.8))') meshBerry(:, kx, ky, kz), -aimag(curvature(:,kx,ky,kz)), magnitude_field(kx, ky, kz), eneBerry(13, kx, ky, kz), alpha
+									write(200, '(9(x,f20.8))') meshBerry(:, kx, ky, kz), -aimag(curvature(:,kx,ky,kz)), magnitude_field(kx, ky, kz), eneBerry(13, kx, ky, kz), alpha
 								enddo
 							enddo
 						enddo

@@ -1,6 +1,6 @@
 #This plot is for the 3D energy 
 
-set terminal wxt persist
+set terminal qt persist
 #set terminal pdfcairo enhanced font "Times New Roman" transparent fontscale 0.5 size 10.00in, 10.00in
 set view 75, 120, 0.5, 1
 # set output "3D_energy_plot.pdf"

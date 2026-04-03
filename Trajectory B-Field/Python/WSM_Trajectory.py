@@ -13,18 +13,29 @@ fig = plt.figure(figsize=(10, 8))
 ax = fig.add_subplot(111, projection='3d')
 # Load your actual data
 # data = np.loadtxt("NEWPERTURBED.dat")
-data = np.loadtxt("perturbed.dat")
-# data = np.loadtxt("18,0.001.dat")
+# data = np.loadtxt("perturbed.dat")
+data = np.loadtxt("18,0.001.dat")
+# data = np.loadtxt("traj_unp.dat")
+# data = np.loadtxt("traj_b01.dat")
+# data = np.loadtxt("NEWberryinWSM_unperturbed5.dat")
+
+# Create 2D projections
+ax_xy = fig.add_subplot(2, 2, 2)  # kx-ky projection
+ax_zy = fig.add_subplot(2, 2, 3)  # kz-ky projection
+ax_zx = fig.add_subplot(2, 2, 4)  # kz-kx projection
+
 kx = data[:, 0]
 ky = data[:, 1]
 kz = data[:, 2]
 alpha = data[:, 3]
+# alpha = data[:,8]
 
 # Calculate actual data ranges
 x_min, x_max = np.min(kx), np.max(kx)
 y_min, y_max = np.min(ky), np.max(ky)
 z_min, z_max = np.min(kz), np.max(kz)
-alpha_min, alpha_max = np.min(alpha), 0.78#np.max(alpha)
+# alpha_min, alpha_max = np.min(alpha), np.max(alpha)
+alpha_min, alpha_max = 0.7, 0.8
 
 print(f"X range: {x_min:.6f} to {x_max:.6f}, span: {x_max-x_min:.6f}")
 print(f"Y range: {y_min:.6f} to {y_max:.6f}, span: {y_max-y_min:.6f}")
@@ -66,7 +77,7 @@ except Exception as e:
 radius_x = (x_max - x_min) / 2
 radius_y = (y_max - y_min) / 2
 
-t = np.linspace(0, 2*np.pi, 5000)  # Parameter for helix
+t = np.linspace(0, 2*np.pi, 1000)  # Parameter for helix
 x_model = x_center + radius_x * np.cos(t)  # X coordinates centered on data
 y_model = y_center + radius_y * np.sin(t)  # Y coordinates centered on data
 z_model = z_center_fit + z_amplitude_fit * np.sin(3*t + phase_offset_fit)  # Z with fitted phase
@@ -86,7 +97,7 @@ std_dist = np.std(distances)
 
 
 # Filtering
-distance_threshold = mean_dist * 0.5
+distance_threshold = mean_dist * 1#std_dist
 close_points_mask = distances <= distance_threshold
 
 kx_filtered = kx[close_points_mask]
@@ -97,7 +108,7 @@ alpha_filtered = alpha[close_points_mask]
 # Only look at Weyl points around zmin,zmax and middle
 z_middle = (z_min + z_max)/2
 print(z_middle)
-z_tolerance = (z_max - z_min) * 0.05 # 5% of z range
+z_tolerance = (z_max - z_min) * 0.5#std_dist # 5% of z range
 # Create masks for each condition
 min_z_mask = np.abs(kz_filtered - z_min) < z_tolerance
 max_z_mask = np.abs(kz_filtered - z_max) < z_tolerance
@@ -120,16 +131,45 @@ angles_selected_sorted = angles_selected[selected_sort_idx]
 alpha_selected_sorted = alpha_selected[selected_sort_idx]
 
 def map_alpha_to_curve(t_values, angles_source, alpha_source):
-    # For each t in t_values, find the closest angle in angles_source
+    # For each t in t_values, interpolate between alpha values
     alpha_mapped = np.zeros_like(t_values)
     
+    # Make sure angles are sorted and handle the circular nature
+    # First, sort angles and corresponding alpha values
+    sorted_indices = np.argsort(angles_source)
+    angles_sorted = angles_source[sorted_indices]
+    alpha_sorted = alpha_source[sorted_indices]
+    
+    # Add points to handle the circular boundary (2π → 0)
+    # Add the first point at the end (with angle += 2π)
+    angles_extended = np.append(angles_sorted, angles_sorted[0] + 2*np.pi)
+    alpha_extended = np.append(alpha_sorted, alpha_sorted[0])
+    
+    # For each t value, find where it fits in the angles array and interpolate
     for i, t_val in enumerate(t_values):
-        # Convert t to range [0, 2π] if it's not already
+        # Convert t to range [0, 2π]
         t_mod = np.mod(t_val, 2*np.pi)
         
-        # Find the closest angle
-        idx = np.argmin(np.abs(angles_source - t_mod))
-        alpha_mapped[i] = alpha_source[idx]
+        # Find the indices of angles that bracket t_mod
+        indices = np.searchsorted(angles_extended, t_mod)
+        if indices == 0:
+            # t_mod is smaller than all angles, use the first angle
+            alpha_mapped[i] = alpha_extended[0]
+        elif indices == len(angles_extended):
+            # t_mod is larger than all angles, use the last alpha
+            alpha_mapped[i] = alpha_extended[-1]
+        else:
+            # Interpolate between the two nearest alpha values
+            angle_low = angles_extended[indices-1]
+            angle_high = angles_extended[indices]
+            alpha_low = alpha_extended[indices-1]
+            alpha_high = alpha_extended[indices]
+            
+            # Calculate interpolation ratio
+            ratio = (t_mod - angle_low) / (angle_high - angle_low)
+            
+            # Linear interpolation
+            alpha_mapped[i] = alpha_low + ratio * (alpha_high - alpha_low)
     
     return alpha_mapped
 
@@ -142,8 +182,8 @@ blue_red_cmap = LinearSegmentedColormap.from_list("BlueToRed", ["b","w","r"])
 scatter = ax.scatter(kx_selected, ky_selected, kz_selected, 
                     c=alpha_selected,  # Use alpha column for color
                     cmap=blue_red_cmap,  # Color map
-                    s=10,  # Size of points
-                    alpha=0.8,  # Opacity of points
+                    s=0,  # Size of points
+                    alpha=1,  # Opacity of points
                     norm=norm)
 
 # Prepare the points for Line3DCollection
@@ -177,30 +217,89 @@ ax.set_zlim(z_min - margin * z_range, z_max + margin * z_range)
 # Add legend and title
 ax.legend()
 # plt.title('3D Helix with Phase-Adjusted Model')
-plt.show()
 # Create 2D projections to visualize the phase adjustment
-fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+# fig2, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
-# Plot angle vs z to show the phase adjustment
-ax1.scatter(angles_sorted, z_sorted, c='blue', s=15, alpha=0.7, label='Data')
-t_fine = np.linspace(0, 2*np.pi, 200)
-ax1.plot(t_fine, sine_model(t_fine, z_center_fit, z_amplitude_fit, phase_offset_fit), 
-         'r-', linewidth=2, label='Fitted Curve')
-ax1.set_xlabel('Angle (radians)')
-ax1.set_ylabel('z')
-ax1.set_title('z vs Angle (Phase Adjustment)')
-ax1.legend()
-ax1.set_xlim(0, 2*np.pi)
+# # Plot angle vs z to show the phase adjustment
+# ax1.scatter(angles_sorted, z_sorted, c='blue', s=15, alpha=0.7, label='Data')
+# t_fine = np.linspace(0, 2*np.pi, 200)
+# ax1.plot(t_fine, sine_model(t_fine, z_center_fit, z_amplitude_fit, phase_offset_fit), 
+#          'r-', linewidth=2, label='Fitted Curve')
+# ax1.set_xlabel('Angle (radians)')
+# ax1.set_ylabel('z')
+# ax1.set_title('z vs Angle (Phase Adjustment)')
+# ax1.legend()
+# ax1.set_xlim(0, 2*np.pi)
 
-# kx-kz projection
-scatter2 = ax2.scatter(kx, kz, c=alpha, cmap=cm.plasma, s=20, alpha=0.8)
-# Project model onto kx-kz plane
-ax2.plot(x_model, z_model, 'r-', linewidth=2, alpha=0.7)
-ax2.set_xlabel('kx')
-ax2.set_ylabel('kz')
-ax2.set_xlim(x_min - margin * x_range, x_max + margin * x_range)
-ax2.set_ylim(z_min - margin * z_range, z_max + margin * z_range)
-ax2.set_title('kx-kz Projection with Phase-Adjusted Model')
-fig2.colorbar(scatter2, ax=ax2)
+# # kx-kz projection
+# scatter2 = ax2.scatter(kx, kz, c=alpha, cmap=cm.plasma, s=20, alpha=0.8)
+# # Project model onto kx-kz plane
+# ax2.plot(x_model, z_model, 'r-', linewidth=2, alpha=0.7)
+# ax2.set_xlabel('kx')
+# ax2.set_ylabel('kz')
+# ax2.set_xlim(x_min - margin * x_range, x_max + margin * x_range)
+# ax2.set_ylim(z_min - margin * z_range, z_max + margin * z_range)
+# ax2.set_title('kx-kz Projection with Phase-Adjusted Model')
+# fig2.colorbar(scatter2, ax=ax2)
 
+# plt.tight_layout()
+
+# Create LineCollection for 2D projections with color
+# For kx-ky projection
+points_xy = np.array([x_model, y_model]).T.reshape(-1, 1, 2)
+segments_xy = np.concatenate([points_xy[:-1], points_xy[1:]], axis=1)
+lc_xy = LineCollection(segments_xy, cmap=blue_red_cmap, norm=norm, linewidth=2)
+lc_xy.set_array(alpha_model)
+
+# For kz-ky projection
+points_zy = np.array([z_model, y_model]).T.reshape(-1, 1, 2)
+segments_zy = np.concatenate([points_zy[:-1], points_zy[1:]], axis=1)
+lc_zy = LineCollection(segments_zy, cmap=blue_red_cmap, norm=norm, linewidth=2)
+lc_zy.set_array(alpha_model)
+
+# For kz-kx projection
+points_zx = np.array([z_model, x_model]).T.reshape(-1, 1, 2)
+segments_zx = np.concatenate([points_zx[:-1], points_zx[1:]], axis=1)
+lc_zx = LineCollection(segments_zx, cmap=blue_red_cmap, norm=norm, linewidth=2)
+lc_zx.set_array(alpha_model)
+
+# Add collections to plots
+ax_xy.add_collection(lc_xy)
+ax_zy.add_collection(lc_zy)
+ax_zx.add_collection(lc_zx)
+
+# Set limits for the 2D projections
+ax_xy.set_xlim(x_min - margin * x_range, x_max + margin * x_range)
+ax_xy.set_ylim(y_min - margin * y_range, y_max + margin * y_range)
+ax_xy.set_xlabel('kx')
+ax_xy.set_ylabel('ky')
+ax_xy.set_title('kx-ky Projection')
+
+ax_zy.set_xlim(z_min - margin * z_range, z_max + margin * z_range)
+ax_zy.set_ylim(y_min - margin * y_range, y_max + margin * y_range)
+ax_zy.set_xlabel('kz')
+ax_zy.set_ylabel('ky')
+ax_zy.set_title('kz-ky Projection')
+
+ax_zx.set_xlim(z_min - margin * z_range, z_max + margin * z_range)
+ax_zx.set_ylim(x_min - margin * x_range, x_max + margin * x_range)
+ax_zx.set_xlabel('kz')
+ax_zx.set_ylabel('kx')
+ax_zx.set_title('kz-kx Projection')
+
+# Add a color bar
+cbar = fig.colorbar(lc, ax=[ax, ax_xy, ax_zy, ax_zx], pad=0.05)
+cbar.set_label('Alpha Value')
+
+# Make sure each 2D plot has equal aspect ratio
+ax_xy.set_aspect('equal')
+ax_zy.set_aspect('equal')
+ax_zx.set_aspect('equal')
+# z_model_min = np.min(z_model)
+# z_model_max = np.max(z_model)
+# z_model_middle = (z_model_min + z_model_max) / 2
+
+# print(z_model_min,z_model_max,z_model_middle)
+# print(z_model_min-z_model_middle)
 plt.tight_layout()
+plt.show()

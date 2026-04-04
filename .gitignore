@@ -1,0 +1,10 @@
+*.dat
+*.pdf
+*.png
+*.eps
+*.o
+*.mod
+*.d
+a.out
+myapp
+venv/

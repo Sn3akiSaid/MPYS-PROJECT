@@ -19,9 +19,9 @@ Program interpolate_topology
 !---------Variable allocation
       !character(len=30) :: klabel(nkpath),kxlabel(nkpath),kylabel(nkpath)
       character(len=80) hamil_file_trivial,hamil_file_topological,nnkp,line,partnumber
-! Add the directory path
-    ! character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 18x18/'  ! Relative path to Hamiltonians directory
-      character(len=200) :: hamil_dir = '/home/aleks/MPYS-PROJECT/Hamiltonians 4x4/'  ! 4x4 Hamiltonian
+! Path to the shared Hamiltonian directory, relative to this program's directory.
+    ! character(len=200) :: hamil_dir = '../Hamiltonians 18x18/'  ! 18x18 Hamiltonian
+      character(len=200) :: hamil_dir = '../Hamiltonians 4x4/'  ! 4x4 Hamiltonian
 
       integer ik, ipart, ib, is,&
               i,j,k,&

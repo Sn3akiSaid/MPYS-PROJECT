@@ -8,6 +8,8 @@ Program interpolate_topology
     Implicit None
 !--------to be midified by the usere
     character(len=80):: prefix="BiTeI"
+! Path to the shared Hamiltonian directory, relative to this program's directory.
+    character(len=200):: hamil_dir = '../Hamiltonians 18x18/'
     integer,parameter::nkpath=3,np=2000,npartitions=1
 !---Magnetic Field to be modified by User
     real*8,parameter::B_x=0d0, B_y=0.1d0, B_z=0d0
@@ -47,9 +49,9 @@ Program interpolate_topology
                             Hamr_trivial(:,:,:), Hamr_topological(:,:,:),&
                             work(:)
 !------------------------------------------------------
-    write(hamil_file_trivial,'(a,a)')trim(adjustl(prefix)),"_hr_trivial.dat"
-    write(hamil_file_topological,'(a,a)')trim(adjustl(prefix)),"_hr_topological.dat"
-    write(nnkp,'(a,a)')      trim(adjustl(prefix)),".nnkp"
+    write(hamil_file_trivial,'(2a,a)')trim(adjustl(hamil_dir)),trim(adjustl(prefix)),"_hr_trivial.dat"
+    write(hamil_file_topological,'(2a,a)')trim(adjustl(hamil_dir)),trim(adjustl(prefix)),"_hr_topological.dat"
+    write(nnkp,'(2a,a)')      trim(adjustl(hamil_dir)),trim(adjustl(prefix)),".nnkp"
 
     twopi=4.0d0*atan(1.0d0)*2.0d0
 

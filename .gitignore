@@ -1,10 +1,22 @@
-*.dat
-*.pdf
-*.png
-*.eps
+# --- Build artefacts ---
 *.o
 *.mod
 *.d
 a.out
 myapp
+myapp.exe
+*.exe
+
+# --- Python / editor ---
 venv/
+__pycache__/
+*.swp
+.vscode/
+.DS_Store
+*:Zone.Identifier
+
+# --- Simulation output & figures (regenerable by re-running the programs) ---
+*.dat
+*.pdf
+*.png
+*.eps

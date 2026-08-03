@@ -1,0 +1,14 @@
+# Python dependencies for the MPYS-PROJECT plotting/analysis scripts.
+# Recreate the environment with:
+#     python3 -m venv venv && source venv/bin/activate
+#     pip install -r requirements.txt
+#
+# Versions pinned to those used by the original venv (Python 3.12.3).
+# Direct imports found across the project's .py files:
+#   matplotlib, numpy, scipy, mpl_toolkits (ships with matplotlib), pyvista, vtk
+
+matplotlib==3.10.0
+numpy==2.2.3
+scipy==1.15.2
+pyvista==0.44.2
+vtk==9.3.1
